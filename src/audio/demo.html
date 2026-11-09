@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roadster Sound Lab</title>
+<style>
+  :root { --bg:#0b0d12; --panel:#151922; --text:#e8ecf3; --muted:#8a93a6; --accent:#e31937; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 system-ui, sans-serif; padding:16px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p { color:var(--muted); margin:0 0 16px; }
+  .grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); max-width:1100px; }
+  section { background:var(--panel); border-radius:12px; padding:16px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 12px; }
+  label.row { display:grid; grid-template-columns:90px 1fr 48px; gap:8px; align-items:center; margin:8px 0; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  button, select { background:#222838; color:var(--text); border:1px solid #2e3548; border-radius:8px; padding:8px 12px; font:inherit; cursor:pointer; margin:3px; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); border-color:var(--accent); font-weight:600; }
+  .speedo { font:600 40px/1 ui-monospace, monospace; }
+  .speedo small { font-size:14px; color:var(--muted); }
+</style>
+</head>
+<body>
+<h1>Roadster Sound Lab</h1>
+<p>Every sound here is synthesized live in the browser. Tap Start, then drive with the sliders or hold W/S/Space/B.</p>
+<div class="grid">
+  <section>
+    <h2>Car</h2>
+    <button class="primary" id="start">Start audio</button>
+    <button id="auto">Auto-drive lap</button>
+    <div class="speedo"><span id="kmh">0</span> <small>km/h</small></div>
+    <label class="row">Speed <input id="speed" type="range" min="0" max="110" value="0" step="0.5"><span id="speedV">0</span></label>
+    <label class="row">Throttle <input id="throttle" type="range" min="0" max="1" step="0.01" value="0"><span id="throttleV">0</span></label>
+    <label class="row">Brake <input id="brake" type="range" min="0" max="1" step="0.01" value="0"><span id="brakeV">0</span></label>
+    <label class="row">Tire slip <input id="slip" type="range" min="0" max="1" step="0.01" value="0"><span id="slipV">0</span></label>
+    <label class="row">Surface
+      <select id="surface"><option>asphalt</option><option>dirt</option><option>grass</option><option>snow</option><option>sand</option></select><span></span>
+    </label>
+    <label><input id="boost" type="checkbox"> Boost thrusters</label>
+  </section>
+  <section>
+    <h2>Impacts</h2>
+    <button data-hit="2">Tap</button><button data-hit="8">Solid hit</button><button data-hit="22">Big crash</button>
+    <button id="scrape">Wall scrape (hold)</button><button id="horn">Horn (hold)</button>
+    <h2 style="margin-top:16px">Interface</h2>
+    <div id="ui"></div>
+  </section>
+  <section>
+    <h2>Music</h2>
+    <button data-song="menu">Garage (menu)</button><button data-song="race">Race</button><button data-song="results">Results</button><button id="stop">Stop</button>
+    <label class="row">Intensity <input id="intensity" type="range" min="0" max="1" step="0.01" value="0.5"><span id="intensityV">0.5</span></label>
+    <h2 style="margin-top:16px">Volume settings</h2>
+    <div id="settings"></div>
+  </section>
+</div>
+<script type="module">
+import { AudioEngine, mountAudioSettings } from './AudioEngine.js';
+const audio = new AudioEngine();
+window.audio = audio;
+const $ = (id) => document.getElementById(id);
+const state = { speed: 0, throttle: 0, brake: 0, slip: 0, surface: 'asphalt', boost: false };
+let autoDrive = false, autoT = 0;
+
+for (const k of ['speed', 'throttle', 'brake', 'slip']) {
+  $(k).addEventListener('input', () => { state[k] = +$(k).value; autoDrive = false; });
+}
+$('surface').onchange = () => (state.surface = $('surface').value);
+$('boost').onchange = () => (state.boost = $('boost').checked);
+$('start').onclick = async () => { await audio.unlock(); audio.music.play('menu'); audio.ui('confirm'); };
+$('auto').onclick = () => { audio.unlock(); autoDrive = true; autoT = 0; audio.music.play('race'); };
+document.querySelectorAll('[data-hit]').forEach((b) => (b.onclick = () => audio.collision(+b.dataset.hit)));
+document.querySelectorAll('[data-song]').forEach((b) => (b.onclick = () => { audio.unlock(); audio.music.play(b.dataset.song); }));
+$('stop').onclick = () => audio.music.stop();
+$('intensity').oninput = () => { audio.music.setIntensity(+$('intensity').value); $('intensityV').textContent = $('intensity').value; };
+let scraping = false;
+const hold = (el, on, off) => { el.addEventListener('pointerdown', on); for (const e of ['pointerup', 'pointerleave']) el.addEventListener(e, off); };
+hold($('scrape'), () => (scraping = true), () => (scraping = false));
+hold($('horn'), () => audio.horn(true), () => audio.horn(false));
+for (const n of ['hover', 'click', 'confirm', 'back', 'error', 'countdown', 'go', 'checkpoint', 'lap', 'coin', 'combo', 'unlock', 'whoosh']) {
+  const b = document.createElement('button');
+  b.textContent = n;
+  b.onclick = () => audio.ui(n);
+  $('ui').append(b);
+}
+mountAudioSettings($('settings'), audio);
+
+const keys = {};
+addEventListener('keydown', (e) => { keys[e.code] = true; if (e.code === 'KeyH') audio.horn(true); });
+addEventListener('keyup', (e) => { keys[e.code] = false; if (e.code === 'KeyH') audio.horn(false); });
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const keyDrive = keys.KeyW || keys.KeyS || keys.Space || keys.ArrowUp || keys.ArrowDown;
+  if (autoDrive) {
+    // Scripted lap: launch, straight, braking zone, drifty corner, boost.
+    autoT += dt;
+    const p = autoT % 16;
+    state.throttle = p < 6 ? 1 : p < 7.5 ? 0 : p < 10 ? 0.6 : 1;
+    state.brake = p >= 6 && p < 7.5 ? 0.9 : 0;
+    state.slip = p >= 7.5 && p < 10 ? 0.7 : 0.05;
+    state.boost = p > 13 && p < 15;
+  } else if (keyDrive) {
+    state.throttle = keys.KeyW || keys.ArrowUp ? 1 : 0;
+    state.brake = keys.KeyS || keys.ArrowDown ? 1 : 0;
+    state.slip = keys.Space ? 0.8 : 0.05;
+    state.boost = !!keys.KeyB;
+  }
+  if (autoDrive || keyDrive) {
+    const accel = state.throttle * (state.boost ? 22 : 12) - state.brake * 18 - 0.0025 * state.speed ** 2 - 0.3;
+    state.speed = Math.max(0, Math.min(110, state.speed + accel * dt));
+    $('speed').value = state.speed; $('throttle').value = state.throttle; $('brake').value = state.brake; $('slip').value = state.slip;
+    audio.music.setIntensity(0.4 + 0.6 * Math.min(1, state.speed / 70));
+  }
+  if (scraping) audio.scrape(0.8);
+  audio.update(state, dt);
+  $('kmh').textContent = Math.round(state.speed * 3.6);
+  for (const k of ['speed', 'throttle', 'brake', 'slip']) $(k + 'V').textContent = (+state[k]).toFixed(k === 'speed' ? 0 : 2);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
