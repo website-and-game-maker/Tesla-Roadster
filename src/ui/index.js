@@ -134,7 +134,7 @@ export function createUI(opts = {}) {
     shell.dataset.screen = name;
     showroom?.setShot(name === 'garage' ? 'garage' : 'menu');
     // Focus the first control for keyboard/gamepad users.
-    setTimeout(() => { if (current === name && !touch) el.querySelector('[data-autofocus], button:not([disabled])')?.focus({ preventScroll: true }); }, 60);
+    setTimeout(() => { if (current === name && !touch) (el.querySelector('[data-autofocus]') || el.querySelector('button:not([disabled])'))?.focus({ preventScroll: true }); }, 60);
   }
 
   const topbar = () => `<div class="ui-topbar">

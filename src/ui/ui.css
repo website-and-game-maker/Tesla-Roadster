@@ -11,8 +11,8 @@
   -webkit-tap-highlight-color: transparent; pointer-events: none;
 }
 .ui-root * { box-sizing: border-box; }
-.ui-root button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; touch-action: manipulation; }
-.ui-root button:disabled { cursor: default; }
+.ui-root :where(button) { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; touch-action: manipulation; }
+.ui-root :where(button:disabled) { cursor: default; }
 .ui-root :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .ui-root input { font: inherit; color: var(--text); user-select: text; -webkit-user-select: text; }
 
@@ -329,7 +329,7 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 4px 7px; border-radius:
 .t-btn.on { background: rgba(255,255,255,.3); transform: scale(.94); }
 .t-pause { position: absolute; top: calc(14px + var(--safe-t)); left: 50%; transform: translateX(-50%); width: 46px; height: 46px; border-radius: 50%; background: rgba(0,0,0,.4); border: 1px solid var(--line); font-size: 13px; letter-spacing: -2px; }
 .ui-root.is-touch .h-dash { right: auto; left: 50%; transform: translateX(-50%) scale(.8); transform-origin: bottom center; bottom: calc(0px + var(--safe-b)); }
-.ui-root.is-touch .h-map { left: auto; right: calc(16px + var(--safe-r)); top: calc(110px + var(--safe-t)); bottom: auto; width: 120px; height: 120px; }
+.ui-root.is-touch .h-map { left: calc(16px + var(--safe-l)); top: calc(96px + var(--safe-t)); bottom: auto; width: 96px; height: 96px; }
 
 .ui-rotate { position: absolute; inset: 0; z-index: 20; display: none; place-items: center; align-content: center; gap: 12px; text-align: center; background: var(--bg); pointer-events: auto; }
 .ui-rotate div { font-size: 54px; animation: ui-spin 2s var(--ease) infinite; }

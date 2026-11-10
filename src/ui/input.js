@@ -47,6 +47,10 @@ export function createInput(getSettings) {
   return {
     state,
     touchState,
+    // Contract fields (ARCHITECTURE.md): touch-only values for engines that merge keyboard/gamepad themselves.
+    get steer() { return touchState.steer; }, get throttle() { return touchState.throttle; },
+    get brake() { return touchState.brake; }, get handbrake() { return touchState.handbrake; },
+    get boost() { return touchState.boost; },
     /** Returns true once per press for 'pause' | 'camera' | 'reset' | 'horn'. */
     consume(action) { const had = edge.has(action); edge.delete(action); return had; },
     trigger(action) { edge.add(action); },

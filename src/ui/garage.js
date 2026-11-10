@@ -67,31 +67,37 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
   const findPaint = (id) => paints.find((p) => p.id === id) || paints[0];
   const findWheel = (id) => wheels.find((w) => w.id === id) || wheels[0];
 
+  // Car. buildCarModel may return a THREE.Object3D, or the car team's handle
+  // { object, setPaint(id), setWheels(id), update(dt, speed, steer), dispose() }.
+  let handle = null;
+  const q3 = () => { const q = getQuality?.() || 'high'; return q === 'ultra' ? 'high' : q; };
   function makeCar() {
-    if (car) { table.remove(car); disposeTree(car); }
+    if (car) { table.remove(car); handle?.dispose ? handle.dispose() : disposeTree(car); }
     const paint = findPaint(carSpec.paint), wheel = findWheel(carSpec.wheels);
-    car = buildCarModel
-      ? buildCarModel({ THREE, paint, wheels: wheel, color: paint.color, quality: getQuality?.() || 'high', showroom: true })
-      : buildPlaceholderRoadster(THREE, paint, wheel);
+    handle = null; car = null;
+    if (buildCarModel) {
+      try {
+        const res = buildCarModel({ THREE, paint: paint.id, wheels: wheel.id, quality: q3(), showroom: true });
+        if (res?.isObject3D) car = res;
+        else if (res?.object?.isObject3D) { handle = res; car = res.object; }
+      } catch (e) { console.warn('[ui] car model failed, using placeholder:', e); }
+    }
+    if (!car) car = buildPlaceholderRoadster(THREE, paint, wheel);
     car.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     car.position.y = 0.08;
     table.add(car);
   }
   function applyPaint() {
     const paint = findPaint(carSpec.paint);
+    if (handle?.setPaint) { handle.setPaint(paint.id); return; }
     if (car?.userData?.setPaint) { car.userData.setPaint(paint); return; }
-    if (car?.setPaint) { car.setPaint(paint); return; }
-    let done = false;
-    car?.traverse((o) => {
-      if (o.isMesh && o.material?.userData?.isPaint) { applyPaintToMaterial(o.material, paint); done = true; }
-    });
-    if (!done) makeCar();
+    makeCar();
   }
   function applyWheels() {
     const w = findWheel(carSpec.wheels);
-    if (car?.userData?.setWheels) car.userData.setWheels(w);
-    else if (car?.setWheels) car.setWheels(w);
-    else makeCar();
+    if (handle?.setWheels) { handle.setWheels(w.id); return; }
+    if (car?.userData?.setWheels) { car.userData.setWheels(w); return; }
+    makeCar();
   }
 
   // Drag to orbit (garage), with inertia
@@ -127,7 +133,7 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
     camera.position.set(look.x + Math.sin(camYaw) * camDist, camH, look.z + Math.cos(camYaw) * camDist);
     camera.lookAt(look);
     ring.material.color.setHSL(0.58, 1, 0.55 + Math.sin(now / 600) * 0.08);
-    if (car?.userData?.update) car.userData.update(dt);
+    if (handle?.update) handle.update(dt, 0, 0); else car?.userData?.update?.(dt);
     renderer.render(scene, camera);
   }
 
@@ -137,7 +143,7 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
   return {
     scene, camera, renderer,
     get car() { return car; },
-    setShot(name) { shot = shots[name] || shots.menu; if (name !== 'garage') camDist = camDist; },
+    setShot(name) { shot = shots[name] || shots.menu; },
     setCar({ paint, wheels: wh } = {}) {
       const pc = paint && paint !== carSpec.paint, wc = wh && wh !== carSpec.wheels;
       if (paint) carSpec.paint = paint; if (wh) carSpec.wheels = wh;
