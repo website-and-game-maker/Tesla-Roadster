@@ -33,7 +33,7 @@ export class Race {
 
   build() {
     const g = this.game, P = g.profile, q = g.quality.preset;
-    this.world = g.mods.worlds.createWorld(this.cfg.worldId, { scene: this.scene, renderer: g.renderer, quality: q.id, timeOfDay: undefined, weather: 'clear' });
+    this.world = g.mods.worlds.createWorld(this.cfg.worldId, { scene: this.scene, renderer: g.renderer, quality: q.id, timeOfDay: undefined, weather: this.cfg.weather || 'clear' });
     const w = this.world;
     if (w.setShadowSize) w.setShadowSize(q.shadowSize);
     this.track = new TrackSampler(w.trackCurve, { roadHalfWidth: w.roadHalfWidth || 7, wallHalfWidth: w.wallHalfWidth || 11 },

@@ -69,6 +69,7 @@ export class Game {
       wheels: car.WHEELS.map((w) => ({ ...w, cost: costOf(car.WHEELS, w.id), price: costOf(car.WHEELS, w.id) })),
       buildCarModel: car.createRoadster,
       skipTitle: false,
+      upgradeCosts: Object.fromEntries(['motor', 'inverter', 'tires', 'battery'].map((k) => [k, UPGRADE_COST.slice(1)])),
       statsFor: (up) => carStats(up),
       qualityInfo: () => this.quality.describe(),
     };
@@ -241,7 +242,8 @@ export class Game {
     if (sel.mode === 'career') {
       const ev = this.career.find((e) => e.id === sel.eventId);
       if (!ev) return;
-      cfg = { mode: 'career', type: ev.type, worldId: ev.world, laps: ev.laps, opponents: ev.opponents, skill: ev.skill, aiUpgrade: ev.aiUpgrade, event: ev };
+      const wd = this.worlds.find((w) => w.id === ev.world) || {};
+      cfg = { mode: 'career', weather: wd.defaultWeather || 'clear', type: ev.type, worldId: ev.world, laps: ev.laps, opponents: ev.opponents, skill: ev.skill, aiUpgrade: ev.aiUpgrade, event: ev };
     } else if (sel.mode === 'timetrial') {
       cfg = { mode: 'timetrial', type: 'free', worldId: sel.track, laps: 99, opponents: 0, skill: 1, aiUpgrade: 0 };
     } else {
