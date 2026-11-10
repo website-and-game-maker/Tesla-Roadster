@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roadster Garage Preview</title>
+<style>
+  :root { --bg: #0d0f12; --panel: rgba(18,20,24,.82); --text: #e9ecef; --muted: #9aa3ad; --accent: #e31937; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; touch-action: none; }
+  #ui { position: fixed; left: 16px; bottom: 16px; right: 16px; max-width: 560px; background: var(--panel); backdrop-filter: blur(8px); border-radius: 12px; padding: 12px 14px; display: grid; gap: 10px; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .label { color: var(--muted); font-size: 12px; min-width: 56px; }
+  .sw { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+  .sw.on { border-color: #fff; }
+  button.t, select { background: #23272d; color: var(--text); border: 1px solid #343a42; border-radius: 8px; padding: 6px 10px; font: inherit; cursor: pointer; }
+  button.t.on { background: var(--accent); border-color: var(--accent); }
+  #name { font-weight: 600; }
+  #stats { position: fixed; top: 12px; right: 16px; color: var(--muted); font-size: 12px; text-align: right; }
+</style>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+</head>
+<body>
+<div id="stats"></div>
+<div id="ui">
+  <div class="row"><span class="label">Paint</span><span id="paints" class="row"></span></div>
+  <div class="row"><span class="label"></span><span id="name"></span></div>
+  <div class="row"><span class="label">Wheels</span><select id="wheels"></select>
+    <select id="caliper"><option>red</option><option>black</option><option>yellow</option><option>blue</option></select></div>
+  <div class="row"><span class="label">Quality</span><select id="quality"><option>high</option><option>medium</option><option>low</option><option>auto</option></select></div>
+  <div class="row"><span class="label">Test</span>
+    <button class="t" id="drive">Drive</button><button class="t" id="lights">Lights</button>
+    <button class="t" id="brake">Brake</button><button class="t" id="night">Night</button></div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { createRoadster, PAINTS, WHEELS } from './src/car/roadster.js';
+
+const params = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: params.has('shot') });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 200);
+
+// Studio reflections: a soft box of light panels baked into a PMREM env map.
+function studioEnv() {
+  const s = new THREE.Scene();
+  const room = new THREE.Mesh(new THREE.BoxGeometry(30, 14, 30), new THREE.MeshBasicMaterial({ color: 0x24272c, side: THREE.BackSide }));
+  room.position.y = 5; s.add(room);
+  const panel = (w, h, x, y, z, ry, rx, k) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(k, k, k) }));
+    m.position.set(x, y, z); m.rotation.set(rx, ry, 0); s.add(m);
+  };
+  panel(16, 3, 0, 11.9, 0, 0, Math.PI / 2, 6);       // ceiling strip
+  panel(10, 5, -14.9, 4, 0, Math.PI / 2, 0, 3);      // side softboxes
+  panel(10, 5, 14.9, 4, 0, -Math.PI / 2, 0, 3);
+  panel(14, 4, 0, 4, -14.9, 0, 0, 1.5);
+  const pm = new THREE.PMREMGenerator(renderer);
+  return pm.fromScene(s, 0.03).texture;
+}
+const env = studioEnv();
+scene.environment = env;
+
+const floor = new THREE.Mesh(new THREE.CircleGeometry(14, 64).rotateX(-Math.PI / 2),
+  new THREE.MeshStandardMaterial({ color: 0x1b1d21, roughness: 0.35, metalness: 0.2 }));
+floor.receiveShadow = true;
+scene.add(floor);
+const hemi = new THREE.HemisphereLight(0xdfe8ff, 0x202020, 0.6);
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(5, 9, 4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4 });
+sun.shadow.bias = -0.0004;
+scene.add(hemi, sun);
+
+let car;
+const ui = { paint: params.get('paint') || 'pearlWhite', wheels: params.get('wheels') || 'aeroSilver', quality: params.get('quality') || 'high', caliper: 'red' };
+function build() {
+  car?.dispose();
+  car = createRoadster({ ...ui });
+  scene.add(car.object);
+  let tris = 0;
+  car.object.traverse((o) => { if (o.isMesh && o.visible) tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; });
+  stats.textContent = `${ui.quality} · ${Math.round(tris).toLocaleString()} triangles`;
+}
+
+const paints = document.getElementById('paints');
+for (const p of PAINTS) {
+  const b = document.createElement('button');
+  b.className = 'sw'; b.title = p.name; b.style.background = '#' + p.color.toString(16).padStart(6, '0');
+  b.onclick = () => { ui.paint = p.id; car.setPaint(p.id); sync(); };
+  b.dataset.id = p.id;
+  paints.append(b);
+}
+const wheelsSel = document.getElementById('wheels');
+for (const w of WHEELS) wheelsSel.add(new Option(w.name, w.id));
+wheelsSel.onchange = () => { ui.wheels = wheelsSel.value; car.setWheels(ui.wheels); };
+document.getElementById('caliper').onchange = (e) => { ui.caliper = e.target.value; car.setCaliper(ui.caliper); };
+const qSel = document.getElementById('quality');
+qSel.onchange = () => { ui.quality = qSel.value; build(); };
+function sync() {
+  for (const b of paints.children) b.classList.toggle('on', b.dataset.id === ui.paint);
+  document.getElementById('name').textContent = PAINTS.find((p) => p.id === ui.paint).name;
+  wheelsSel.value = ui.wheels; qSel.value = ui.quality;
+}
+const toggles = {};
+for (const id of ['drive', 'lights', 'brake', 'night']) {
+  const b = document.getElementById(id);
+  b.onclick = () => { toggles[id] = !toggles[id]; b.classList.toggle('on', toggles[id]); apply(); };
+}
+function apply() {
+  car.setHeadlights(!!toggles.lights);
+  car.setBrake(!!toggles.brake);
+  const night = !!toggles.night;
+  scene.environmentIntensity = night ? 0.08 : 1; // r163+; older builds ignore it
+  scene.traverse((o) => { if (o.material && 'envMapIntensity' in o.material && !o.material.userData.keepEnv) o.material.envMapIntensity = night ? 0.08 : 1; });
+  hemi.intensity = night ? 0.03 : 0.6; sun.intensity = night ? 0.0 : 2.2;
+  scene.background = new THREE.Color(night ? 0x020304 : 0x0d0f12);
+}
+
+// Orbit camera (drag / touch to rotate, wheel / pinch to zoom).
+let yaw = +(params.get('yaw') ?? 0.75), pitch = +(params.get('pitch') ?? 0.18), dist = +(params.get('dist') ?? 7.5), auto = !params.has('yaw');
+let drag = null;
+renderer.domElement.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; auto = false; });
+addEventListener('pointerup', () => (drag = null));
+addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  yaw -= (e.clientX - drag.x) * 0.006; pitch = Math.min(1.3, Math.max(0.02, pitch + (e.clientY - drag.y) * 0.004));
+  drag = { x: e.clientX, y: e.clientY };
+});
+addEventListener('wheel', (e) => { dist = Math.min(20, Math.max(3, dist * (1 + e.deltaY * 0.001))); });
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+build(); sync(); apply();
+if (params.get('lights')) { toggles.lights = true; toggles.night = params.get('lights') === 'night'; apply(); }
+if (params.get('brake')) { toggles.brake = true; apply(); }
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (auto) yaw += dt * 0.15;
+  const target = new THREE.Vector3(0, 0.55, +(params.get('tz') ?? 0));
+  camera.position.set(Math.sin(yaw) * Math.cos(pitch) * dist, target.y + Math.sin(pitch) * dist, target.z + Math.cos(yaw) * Math.cos(pitch) * dist);
+  camera.lookAt(target);
+  const t = clock.elapsedTime;
+  car.update(dt, toggles.drive ? 30 : 0, toggles.drive ? Math.sin(t) * 0.35 : 0);
+  renderer.render(scene, camera);
+});
+window.__car = () => car;
+</script>
+</body>
+</html>
