@@ -9,6 +9,7 @@
 // Units are metres. Origin is on the ground, midway between the axles; +Z is
 // forward, +Y up, the driver sits on +X. quality: 'high' | 'medium' | 'low' |
 // 'auto' ('auto' builds all three into a THREE.LOD that switches by distance).
+// car.body is the sprung body group (no wheels) for roll/pitch.
 // Triangle counts (incl. wheels): high ≈ 73–88k by rim style, medium ≈ 35k, low ≈ 6k.
 
 import * as THREE from 'three';
@@ -29,6 +30,7 @@ const LEVELS = {
   low: { rings: 34, segs: 13, details: false, cabRings: 10, cabSegs: 5, tube: 3 },
 };
 const LOD_DIST = { high: 0, medium: 16, low: 45 };
+const LEAN_PIVOT_Y = 0.45; // roughly the centre of mass height
 
 // Geometry for each quality level is identical for every car, so build once.
 const geoCache = new Map();
@@ -116,8 +118,17 @@ function mesh(geo, mat, shadow = true) {
 /** Builds one detail level of the car. */
 function buildLevel(q, mats, wheelSpec) {
   const g = levelGeometry(q);
+  // level → lean (pivot near the centre of mass) → root (all sprung parts).
+  // Wheels hang off `level` directly so body roll/pitch doesn't move them.
+  const level = new THREE.Group();
+  level.name = `roadster-${q}`;
+  const lean = new THREE.Group();
+  lean.name = 'body';
+  lean.position.y = LEAN_PIVOT_Y;
   const root = new THREE.Group();
-  root.name = `roadster-${q}`;
+  root.position.y = -LEAN_PIVOT_Y;
+  lean.add(root);
+  level.add(lean);
 
   root.add(mesh(g.body, mats.paint));
   const glass = mesh(g.glass, mats.glass, false);
@@ -206,11 +217,11 @@ function buildLevel(q, mats, wheelSpec) {
   for (const axle of [DIM.front, DIM.rear]) {
     for (const side of [1, -1]) {
       const w = buildWheel(axle, side, wheelSpec, mats, q);
-      root.add(w.pivot);
+      level.add(w.pivot);
       wheels.push(w);
     }
   }
-  return { root, wheels, spoiler, q };
+  return { root: level, lean, wheels, spoiler, q };
 }
 
 /**
@@ -268,8 +279,15 @@ export function createRoadster(opts = {}) {
 
   function forWheels(fn) { for (const l of levels) for (const w of l.wheels) fn(w); }
 
+  // Sprung body for roll/pitch. With one level it is the real group; with
+  // 'auto' it is a proxy whose transform update() copies to every level.
+  const body = levels.length === 1 ? levels[0].lean : new THREE.Object3D();
+  body.position.y = LEAN_PIVOT_Y;
+
   const car = {
     object,
+    /** Sprung body (no wheels), pivot ~centre of mass: lean it via rotation.x/z, bounce via position.y. */
+    body,
     dimensions: DIM,
     get paint() { return paintId; },
     get wheels() { return wheelId; },
@@ -318,6 +336,9 @@ export function createRoadster(opts = {}) {
 
     /** Per-frame animation: wheel roll, steering, active aero. */
     update(dt, speed = 0, steer = state.steer) {
+      if (levels.length > 1) {
+        for (const l of levels) { l.lean.position.copy(body.position); l.lean.quaternion.copy(body.quaternion); }
+      }
       if (steer !== state.steer) car.setSteer(steer);
       const f = state.spinF + (speed / DIM.front.r) * dt;
       const r = state.spinR + (speed / DIM.rear.r) * dt;
