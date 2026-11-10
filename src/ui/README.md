@@ -1,0 +1,25 @@
+# UI (menus, garage, HUD, touch)
+
+Owned by the menus/UI team. Plain ES modules, no build step. Open `src/ui/demo.html` from any static server to try every screen with a fake race.
+
+```js
+import * as THREE from 'three';
+import { createUI } from './ui/index.js';   // also load src/ui/ui.css
+const ui = createUI({ THREE, buildCarModel, paints, wheels, tracks, modes });
+ui.on('start', ({ mode, eventId, track, laps, opponents, difficulty, car, settings }) => {});
+ui.on('pause' | 'resume' | 'restart' | 'quit', () => {});
+ui.on('settings', (s) => {});            // s.graphics = resolved quality preset
+ui.on('purchase', ({ kind, id, price }) => {}); // then call ui.setProfile(...)
+ui.on('equip', (car) => {});
+ui.on('multiplayer', ({ action, code, name, car }) => {}); // then ui.showLobby({...})
+ui.on('lobby', ({ action, ready, track }) => {});
+ui.on('ui-sound', (type) => {});         // set ui.builtinSounds = false to use the audio team's sounds
+```
+
+Per frame in a race: `ui.hud.update({ speedKmh, gear, lap, lapCount, lapTime, bestLap, position, racers, boost, battery, driftScore, message, wrongWay, ghostDelta, eliminated, fps, minimap }, dt)` and read `ui.input.touchState` (or `ui.input.poll(dt)` for keyboard + gamepad + touch merged).
+
+The UI owns Esc / P / gamepad Start for pausing and emits `pause` / `resume`; the engine should not also bind them.
+
+Other calls: `ui.showMenu()`, `ui.pause()`, `ui.showResults({...})`, `ui.setLoading(0..1, text)`, `ui.toast(text)`, `ui.setProfile({...})`, `ui.setCatalog({ paints, wheels })`, `ui.setResolvedQuality(tier)`.
+
+Graphics helpers: `detectQuality()`, `resolveGraphics(settings)`, `createAdaptiveQuality(tier, onChange)` (steps quality down when FPS stays under 40, never back up to a tier that was too slow).

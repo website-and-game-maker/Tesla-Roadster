@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#07080b">
+  <title>Roadster UI demo</title>
+  <link rel="stylesheet" href="./ui.css">
+  <style>html, body { margin: 0; height: 100%; background: #07080b; overflow: hidden; }</style>
+  <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }</script>
+</head>
+<body>
+<script type="module">
+  // Standalone harness for the UI team: fakes a race so every screen and the HUD can be checked
+  // without the game engine. The real game wires the same events in its own entry point.
+  import * as THREE from 'three';
+  import { createUI } from './index.js';
+
+  const ui = createUI({ THREE });
+  window.ui = ui;
+  let race = null;
+
+  const loop = [];
+  for (let i = 0; i < 64; i++) { const a = (i / 64) * Math.PI * 2; loop.push({ x: Math.cos(a) * (120 + 40 * Math.sin(a * 3)), z: Math.sin(a) * 80 }); }
+
+  ui.on('start', (cfg) => {
+    console.log('[demo] start', cfg);
+    let p = 0;
+    const t = setInterval(() => { p += 0.2; ui.setLoading(p, 'Loading track'); if (p >= 1) { clearInterval(t); begin(cfg); } }, 120);
+  });
+  function begin(cfg) {
+    race = { cfg, t: -3, lap: 1, laps: cfg.laps || 3, lapStart: 0, best: null, speed: 0, boost: 0.4, batt: 1, drift: 0, ang: 0 };
+  }
+  ui.on('restart', () => race && begin(race.cfg));
+  ui.on('quit', () => { race = null; });
+  ui.on('multiplayer', ({ action, code, name }) => {
+    setTimeout(() => ui.showLobby({ code: code || 'R8X2', host: action !== 'join', track: 'coast',
+      players: [{ name, me: true, host: action !== 'join', color: '#3ea6ff' }, { name: 'Volt', color: '#ff4d6d', ready: true, ping: 42 }] }), 500);
+  });
+  ui.on('lobby', ({ action }) => { if (action === 'start') ui.go('setup', { mode: 'quick' }); });
+
+  let last = performance.now();
+  (function frame(now) {
+    requestAnimationFrame(frame);
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (!race || ui.paused || !ui.inRace) return;
+    const r = race; r.t += dt;
+    const inp = ui.input.poll(dt);
+    let msg = r.t < -2 ? '3' : r.t < -1 ? '2' : r.t < 0 ? '1' : r.t < 0.8 ? 'GO!' : '';
+    if (r.t > 0) {
+      const thr = inp.throttle || (inp.source === 'keyboard' && !inp.brake ? 0.6 : 0);
+      r.speed += (thr * (inp.boost ? 420 : 320) - r.speed) * dt * (inp.brake ? 2 : 0.5);
+      r.ang += r.speed * dt / 900;
+      r.drift = inp.handbrake && r.speed > 80 ? r.drift + dt * 900 : Math.max(0, r.drift - dt * 4000);
+      r.boost = Math.min(1, r.boost + (inp.boost ? -0.3 : 0.05) * dt);
+      r.batt = Math.max(0, r.batt - dt * 0.004 * (inp.boost ? 4 : 1));
+      if (r.ang > Math.PI * 2) {
+        r.ang -= Math.PI * 2; const lt = r.t - r.lapStart; r.best = r.best ? Math.min(r.best, lt) : lt; r.lapStart = r.t; r.lap++;
+        if (r.lap === r.laps) ui.hud.flash('FINAL LAP');
+        if (r.lap > r.laps) { ui.showResults({ position: 1, racers: (r.cfg.opponents || 0) + 1, time: r.t, bestLap: r.best, newRecord: true, stars: 3, credits: 2500, topSpeedKmh: 402, mode: r.cfg.mode }); race = null; return; }
+      }
+    }
+    const i = Math.floor((r.ang / (Math.PI * 2)) * 64) % 64;
+    ui.hud.update({
+      speedKmh: r.speed, gear: 'D', lap: r.lap, lapCount: r.laps, lapTime: Math.max(0, r.t - r.lapStart), bestLap: r.best,
+      position: r.cfg.mode === 'timetrial' ? null : 2, racers: (r.cfg.opponents || 0) + 1, boost: r.boost, battery: r.batt,
+      driftScore: r.drift, message: msg, ghostDelta: r.cfg.mode === 'timetrial' ? Math.sin(r.t / 3) * 0.8 : null, fps: 1 / dt,
+      minimap: { trackPoints: loop, player: { ...loop[i], rot: -r.ang }, others: [loop[(i + 5) % 64]] },
+    }, dt);
+  })(last);
+</script>
+</body>
+</html>
