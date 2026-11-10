@@ -14,7 +14,7 @@ export default {
   gravity: 1.62,
   laps: 3,
   goldSpeed: 32,
-  unlock: { stars: 15 },
+  unlock: 69, // total stars needed (matches the career's 4 events x 3 stars per world)
   music: 'space',
   points: [
     [0, 0, 0], [60, 260, 12], [220, 440, 26], [460, 480, 20], [640, 360, 6],
@@ -23,7 +23,7 @@ export default {
   ],
   roadWidth: 16,
   runoff: 5,
-  roadStyle: 'dirt',
+  roadStyle: 'lunar',
   barrier: 'berm',
   barrierColor: 0x8d8a85,
   kerbs: false,
@@ -51,7 +51,7 @@ export default {
     let crater = 0;
     for (const [cx, cz, r] of [[320, 0, 150], [-350, 300, 220], [900, -500, 260], [300, 800, 180]]) {
       const d = Math.hypot(x - cx, z - cz) / r;
-      if (d < 1.6) crater += d < 1 ? (d * d - 1) * r * 0.18 : Math.exp(-((d - 1) * 4) ** 2) * r * 0.08;
+      if (d < 1.6) crater += d < 1 ? (d * d - 1) * r * 0.18 : Math.exp(-(((d - 1) * 4) ** 2)) * r * 0.08;
     }
     return base + highlands + crater;
   },

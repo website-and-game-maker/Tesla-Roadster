@@ -14,7 +14,7 @@ export default {
   gravity: 3.71,
   laps: 3,
   goldSpeed: 34,
-  unlock: { stars: 12 },
+  unlock: 53, // total stars needed (matches the career's 4 events x 3 stars per world)
   music: 'space',
   points: [
     [0, 0, 0], [0, 250, 9], [-80, 480, 22], [-260, 600, 31], [-480, 560, 25],

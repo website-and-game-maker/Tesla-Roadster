@@ -14,7 +14,7 @@ export default {
   gravity: 9.81,
   laps: 3,
   goldSpeed: 41, // average m/s needed for a gold medal
-  unlock: { stars: 0 },
+  unlock: 0, // total stars needed
   music: 'chill',
   points: [
     [0, 0, 40], [0, 200, 42], [-40, 380, 45], [-160, 500, 50], [-320, 540, 48],

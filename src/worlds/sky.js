@@ -235,6 +235,7 @@ export function createSky(def, scene, renderer, quality) {
 
     scene.fog.color.copy(pal.fog).multiplyScalar(weatherDim);
     scene.fog.density = (def.fogDensity ?? 0.0012) * weatherFog;
+    scene.fog.userData = { base: scene.fog.density };
 
     const nightAmt = def.atmosphere === 'space' ? 1 : 1 - smoothstep(-12, 2, el);
     starMat.opacity = nightAmt * (1 - overcast);
@@ -279,7 +280,12 @@ export function createSky(def, scene, renderer, quality) {
     updateEnv,
     // Keep the dome and the shadow box centred on the camera / car.
     update(dt, focus, camera) {
-      if (camera) group.position.copy(camera.position);
+      if (camera) {
+        group.position.copy(camera.position);
+        // Fog must swallow everything before the far clip plane, or terrain
+        // gets visibly cut off on low draw distances.
+        if (camera.far) scene.fog.density = Math.max(scene.fog.userData.base ?? scene.fog.density, 2 / camera.far);
+      }
       else if (focus) group.position.copy(focus);
       if (focus) {
         const dir = sun.userData.dir || sunDir;

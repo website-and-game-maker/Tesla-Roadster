@@ -94,7 +94,7 @@ export function roadTexture(style, size, anisotropy) {
     const img = ctx.createImageData(size, size);
     const base = tileableNoise(size, 101, 6, 6);
     const rand = mulberry32(55);
-    const dirt = style === 'dirt' || style === 'regolith';
+    const dirt = style === 'dirt' || style === 'regolith' || style === 'lunar';
     const palette = {
       highway: [58, 60, 63],
       race: [52, 53, 56],
@@ -102,6 +102,7 @@ export function roadTexture(style, size, anisotropy) {
       mountain: [64, 64, 66],
       dirt: [150, 120, 88],
       regolith: [150, 82, 52],
+      lunar: [128, 126, 121],
     }[style] || [58, 60, 63];
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {

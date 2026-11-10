@@ -97,7 +97,7 @@ export function buildTrackData(def) {
     }
     const cx = Math.floor(x / HASH_CELL);
     const cz = Math.floor(z / HASH_CELL);
-    for (let r = 1; r <= 3 && best < 0; r++) {
+    for (let r = 1; r <= 3; r++) {
       for (let a = -r; a <= r; a++) {
         for (let b = -r; b <= r; b++) {
           const list = hash.get(key(cx + a, cz + b));
@@ -110,16 +110,24 @@ export function buildTrackData(def) {
           }
         }
       }
-      // Only trust a ring once it found something closer than the ring size.
-      if (best >= 0 && Math.sqrt(bestD) > r * HASH_CELL) best = -1;
+      // A ring of radius r is guaranteed to contain the nearest sample only
+      // if that sample is closer than r cells.
+      if (best >= 0 && Math.sqrt(bestD) <= r * HASH_CELL) return best;
     }
-    if (best < 0) {
-      for (let i = 0; i < count; i++) {
-        const dx = pos[i * 3] - x;
-        const dz = pos[i * 3 + 2] - z;
-        const d = dx * dx + dz * dz;
-        if (d < bestD) { bestD = d; best = i; }
-      }
+    // Far from the track: coarse scan of every 8th sample, then refine.
+    for (let i = 0; i < count; i += 8) {
+      const dx = pos[i * 3] - x;
+      const dz = pos[i * 3 + 2] - z;
+      const d = dx * dx + dz * dz;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    const c0 = best;
+    for (let k = -8; k <= 8; k++) {
+      const i = (c0 + k + count) % count;
+      const dx = pos[i * 3] - x;
+      const dz = pos[i * 3 + 2] - z;
+      const d = dx * dx + dz * dz;
+      if (d < bestD) { bestD = d; best = i; }
     }
     return best;
   };
@@ -204,8 +212,8 @@ function ribbon(data, profile, side, { vScale = 1, uMode = 'profile', heightFn, 
       const b = a + 1;
       const c = a + n;
       const d = c + 1;
-      if (side > 0) index.push(a, c, b, b, c, d);
-      else index.push(a, b, c, b, d, c);
+      if (side > 0) index.push(a, b, c, b, d, c);
+      else index.push(a, c, b, b, c, d);
     }
   }
   const g = new THREE.BufferGeometry();
@@ -267,7 +275,7 @@ export function buildTrackMeshes(data, def, world, quality) {
   const roadMap = roadTexture(style, size, quality.anisotropy);
   const roadMat = new THREE.MeshStandardMaterial({
     map: roadMap,
-    roughnessMap: style === 'dirt' || style === 'regolith' ? null : roadRoughness(size >> 1, quality.anisotropy),
+    roughnessMap: style === 'dirt' || style === 'regolith' || style === 'lunar' ? null : roadRoughness(size >> 1, quality.anisotropy),
     roughness: 0.92,
     metalness: 0,
     color: 0xffffff,
@@ -415,8 +423,8 @@ function partialRibbon(data, s0, s1, side, profile) {
       const b = a + 1;
       const c = a + n;
       const d = c + 1;
-      if (side > 0) index.push(a, c, b, b, c, d);
-      else index.push(a, b, c, b, d, c);
+      if (side > 0) index.push(a, b, c, b, d, c);
+      else index.push(a, c, b, b, c, d);
     }
   }
   const g = new THREE.BufferGeometry();

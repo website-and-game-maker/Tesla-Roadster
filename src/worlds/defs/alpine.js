@@ -14,7 +14,7 @@ export default {
   gravity: 9.81,
   laps: 2,
   goldSpeed: 30,
-  unlock: { stars: 6 },
+  unlock: 27, // total stars needed (matches the career's 4 events x 3 stars per world)
   music: 'epic',
   points: [
     [0, 0, 0], [0, 150, 8], [0, 290, 19], [15, 365, 24], [60, 398, 27], [105, 365, 30],

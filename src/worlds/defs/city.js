@@ -14,7 +14,7 @@ export default {
   gravity: 9.81,
   laps: 3,
   goldSpeed: 33,
-  unlock: { stars: 3 },
+  unlock: 17, // total stars needed (matches the career's 4 events x 3 stars per world)
   music: 'synthwave',
   points: roundedPolygon([
     [0, -200, 0], [0, 400, 2], [-200, 400, 4], [-200, 700, 8], [200, 700, 9],
@@ -33,7 +33,7 @@ export default {
   fogDensity: 0.0016,
   weathers: ['clear', 'rain', 'fog', 'storm'],
   defaultWeather: 'rain',
-  ambientScale: 1.6,
+  ambientScale: 3.2,
   groundBounce: 0x3a3550,
   terrainBlend: 20,
   terrainRoughness: 0.75,

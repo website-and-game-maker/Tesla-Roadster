@@ -3,7 +3,7 @@
 // barriers, so props are visual only and need no collision.
 import * as THREE from 'three';
 import { mulberry32, createNoise2D } from './noise.js';
-import { facadeTextures } from './textures.js';
+import { facadeTextures, softDot } from './textures.js';
 
 function mat(color, opts = {}) {
   return new THREE.MeshStandardMaterial({ color, roughness: 0.9, ...opts });
@@ -171,6 +171,8 @@ const KINDS = {
     return [
       { geo: stack([pole, arm]), mat: mat(0x3a3d42, { metalness: 0.7, roughness: 0.4 }) },
       { geo: head, mat: new THREE.MeshStandardMaterial({ color: 0x222222, emissive: o.lightColor ?? 0xffc98a, emissiveIntensity: 0 }), nightGlow: 4, shadow: false },
+      // Fake pool of light on the road: cheap, and it shines on wet asphalt.
+      { geo: lightPool(), mat: new THREE.MeshBasicMaterial({ color: o.lightColor ?? 0xffc98a, map: softDot(), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }), nightOpacity: 0.9, shadow: false },
     ];
   },
   neon: (o) => {
@@ -232,6 +234,13 @@ const KINDS = {
   ice: () => [{ geo: rockGeometry(77, 1), mat: new THREE.MeshStandardMaterial({ color: 0xcfe6f5, roughness: 0.15, metalness: 0.05, flatShading: true }), colorJitter: 0.06 }],
 };
 
+function lightPool() {
+  const g = new THREE.PlaneGeometry(13, 13);
+  g.rotateX(-Math.PI / 2);
+  g.translate(0, 0.08, 4.5);
+  return g;
+}
+
 function snowCaps() {
   const caps = [];
   for (let k = 0; k < 4; k++) {
@@ -278,7 +287,8 @@ export function scatterProps(rules, ctx) {
           const z = track.pos[i * 3 + 2] + track.right[i * 3 + 2] * off * side;
           // Face the road.
           const yaw = Math.atan2(-track.right[i * 3] * side, -track.right[i * 3 + 2] * side);
-          placements.push([x, rule.onRoad ? track.pos[i * 3 + 1] : heightFn(x, z), z, yaw]);
+          // Roadside rows stand at road level (terrain dips under the corridor).
+          placements.push([x, track.pos[i * 3 + 1], z, yaw]);
         }
       }
     } else {
@@ -353,6 +363,7 @@ export function scatterProps(rules, ctx) {
       inst.name = rule.kind;
       group.add(inst);
       if (part.nightGlow) glow.push({ mat: part.mat, max: part.nightGlow });
+      if (part.nightOpacity) glow.push({ mat: part.mat, max: part.nightOpacity, opacity: true });
     }
   }
 
@@ -360,7 +371,9 @@ export function scatterProps(rules, ctx) {
     group,
     // Night factor 0..1: switch on window lights, street lamps, domes.
     setNight(n) {
-      for (const g of glow) g.mat.emissiveIntensity = g.max * n;
+      for (const g of glow) {
+        if (g.opacity) { g.mat.opacity = g.max * n; g.mat.visible = n > 0.02; } else g.mat.emissiveIntensity = g.max * n;
+      }
     },
   };
 }
