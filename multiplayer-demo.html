@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Roadster Online Test Track</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #0b0d11; color: #eee; font: 14px system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
+  #info { position: fixed; left: 12px; top: 12px; background: rgba(0,0,0,.5); padding: 8px 12px; border-radius: 10px; line-height: 1.5; pointer-events: none; }
+  #big { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font: 800 96px system-ui; pointer-events: none; text-shadow: 0 4px 20px #000; }
+  #menuBtn { position: fixed; right: 12px; bottom: 12px; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 0; background: #e31937; color: #fff; font: 600 15px system-ui; }
+</style>
+</head>
+<body>
+<!--
+  Developer test bench for src/multiplayer. Not the real game: a top-down
+  oval so the netcode can be tested without the 3D engine.
+  Open in two browsers (or two tabs), Quick Match or share a room code.
+  Arrow keys / WASD to drive; on touch, hold left/right half of the screen.
+-->
+<canvas id="c"></canvas>
+<div id="info"></div>
+<div id="big"></div>
+<button id="menuBtn">Online menu</button>
+<script type="module">
+import { Multiplayer, LobbyUI, readRoomFromUrl } from './src/multiplayer/index.js';
+
+const params = new URLSearchParams(location.search);
+const name = params.get('name') || 'Driver' + Math.floor(Math.random() * 900 + 100);
+const color = '#' + (params.get('color') || ['e31937', '3e8ed0', 'f5f5f5', '1f1f1f', '2ecc71', 'f1c40f'][Math.floor(Math.random() * 6)]);
+const mp = new Multiplayer({ name, color });
+window.mp = mp; // for automated tests
+
+const ui = new LobbyUI(mp, {
+  tracks: [{ id: 'test-oval', name: 'Test Oval' }],
+  onRaceStart: (settings) => resetCar(settings),
+  onExit: () => {},
+});
+document.getElementById('menuBtn').onclick = () => ui.open();
+const invite = readRoomFromUrl();
+if (invite) mp.joinRoom(invite).then(() => ui.open()).catch(() => ui.open());
+else ui.open();
+
+/* ---------------- track: an oval, centreline parameterised by angle ------- */
+const RX = 120, RY = 70, HALF_W = 9;
+const trackPoint = (a) => [Math.cos(a) * RX, Math.sin(a) * RY];
+const progressOf = (x, y) => {
+  let a = Math.atan2(y / RY, x / RX); // approx param angle
+  return ((a / (Math.PI * 2)) + 1) % 1;
+};
+
+/* ---------------- car ---------------------------------------------------- */
+const car = { x: RX, y: 0, h: Math.PI / 2, v: 0, steer: 0, lap: 0, prog: 0, lapStart: 0, best: null, finished: false, laps: 3 };
+function resetCar(settings) {
+  Object.assign(car, { x: RX - 4 + Math.random() * 8, y: -2, h: Math.PI / 2, v: 0, lap: 0, prog: 0, best: null, finished: false, laps: settings?.laps || 3 });
+  car.prevProg = progressOf(car.x, car.y);
+}
+resetCar();
+
+const keys = new Set();
+addEventListener('keydown', (e) => keys.add(e.key.toLowerCase()));
+addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+const touches = new Map();
+const cv = document.getElementById('c');
+cv.addEventListener('pointerdown', (e) => touches.set(e.pointerId, e.clientX));
+cv.addEventListener('pointermove', (e) => touches.has(e.pointerId) && touches.set(e.pointerId, e.clientX));
+addEventListener('pointerup', (e) => touches.delete(e.pointerId));
+
+function physics(dt) {
+  const rt = mp.raceTime();
+  const canDrive = !mp.online || (rt != null && rt >= 0 && !car.finished);
+  let throttle = keys.has('arrowup') || keys.has('w') ? 1 : 0;
+  let brake = keys.has('arrowdown') || keys.has('s') ? 1 : 0;
+  let steer = (keys.has('arrowleft') || keys.has('a') ? -1 : 0) + (keys.has('arrowright') || keys.has('d') ? 1 : 0);
+  if (touches.size) {
+    throttle = 1;
+    for (const x of touches.values()) steer += x < innerWidth / 2 ? -1 : 1;
+  }
+  if (!canDrive) throttle = 0;
+  car.v += (throttle * 28 - brake * 40 - car.v * 0.25) * dt;
+  car.v = Math.max(-8, car.v);
+  car.steer += (Math.max(-1, Math.min(1, steer)) - car.steer) * Math.min(1, dt * 8);
+  car.h += car.steer * car.v * 0.022 * dt;
+  car.x += Math.cos(car.h) * car.v * dt;
+  car.y += Math.sin(car.h) * car.v * dt;
+  // Off-track drag.
+  const r = Math.hypot(car.x / RX, car.y / RY);
+  if (Math.abs(r - 1) * 95 > HALF_W) car.v *= 1 - 1.5 * dt;
+
+  // Lap counting: progress wraps 0.99 -> 0.01 going forward.
+  const p = progressOf(car.x, car.y);
+  if (mp.online && rt >= 0 && !car.finished) {
+    if (car.prevProg > 0.9 && p < 0.1) {
+      const now = rt;
+      if (car.lap > 0) {
+        const lapMs = now - car.lapStart;
+        car.best = car.best ? Math.min(car.best, lapMs) : lapMs;
+        mp.reportLap(car.lap, lapMs);
+      }
+      car.lap++;
+      car.lapStart = now;
+      if (car.lap > car.laps) {
+        car.finished = true;
+        mp.reportFinish(now, car.best);
+      }
+    } else if (car.prevProg < 0.1 && p > 0.9 && car.lap > 0) {
+      car.lap--; // reversed over the line
+    }
+  }
+  car.prevProg = p;
+  car.prog = p;
+}
+
+/* ---------------- render ------------------------------------------------- */
+const ctx = cv.getContext('2d');
+function draw() {
+  const dpr = devicePixelRatio || 1;
+  if (cv.width !== innerWidth * dpr) { cv.width = innerWidth * dpr; cv.height = innerHeight * dpr; }
+  const s = Math.min(innerWidth / (RX * 2 + 60), innerHeight / (RY * 2 + 60)) * dpr;
+  ctx.setTransform(s, 0, 0, s, cv.width / 2, cv.height / 2);
+  ctx.fillStyle = '#16351f';
+  ctx.fillRect(-1000, -1000, 2000, 2000);
+  ctx.strokeStyle = '#333'; ctx.lineWidth = HALF_W * 2;
+  ctx.beginPath(); ctx.ellipse(0, 0, RX, RY, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(RX - HALF_W, 0); ctx.lineTo(RX + HALF_W, 0); ctx.stroke();
+
+  const drawCar = (x, y, h, col, label, alpha = 1) => {
+    ctx.save(); ctx.globalAlpha = alpha; ctx.translate(x, y); ctx.rotate(h);
+    ctx.fillStyle = col; ctx.strokeStyle = '#000'; ctx.lineWidth = 0.4;
+    ctx.fillRect(-2.2, -1, 4.4, 2); ctx.strokeRect(-2.2, -1, 4.4, 2);
+    ctx.restore();
+    if (label) { ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = '#fff'; ctx.font = '3px system-ui'; ctx.fillText(label, x + 3, y - 3); ctx.restore(); }
+  };
+  for (const rc of mp.getRemoteCars()) {
+    // Remote states are 3D (x, y, z) with y up; this bench drives on the x/z plane.
+    const h = 2 * Math.atan2(rc.q[1], rc.q[3]);
+    drawCar(rc.p[0], rc.p[2], h, rc.color, `${rc.position ? 'P' + rc.position + ' ' : ''}${rc.name}`, rc.stale ? 0.35 : 1);
+  }
+  drawCar(car.x, car.y, car.h, color, name);
+}
+
+/* ---------------- loop --------------------------------------------------- */
+let last = performance.now();
+const info = document.getElementById('info');
+const big = document.getElementById('big');
+function frame(t) {
+  const dt = Math.min(0.05, (t - last) / 1000); last = t;
+  physics(dt);
+  mp.sendState({
+    pos: [car.x, 0, car.y],
+    quat: [0, Math.sin(car.h / 2), 0, Math.cos(car.h / 2)],
+    vel: [Math.cos(car.h) * car.v, 0, Math.sin(car.h) * car.v],
+    speed: car.v, steer: car.steer, lap: car.lap, progress: car.prog,
+  });
+  draw();
+  const rt = mp.raceTime();
+  big.textContent = rt != null && rt < 0 ? String(Math.ceil(-rt / 1000)) : rt != null && rt < 800 ? 'GO!' : '';
+  info.textContent = `${name} · ${mp.online ? (mp.isHost ? 'host' : 'guest') + ' · ' + (mp.room?.phase || '') : 'offline'} · lap ${Math.max(0, car.lap)}/${car.laps} · ${Math.round(car.v * 3.6)} km/h`;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
