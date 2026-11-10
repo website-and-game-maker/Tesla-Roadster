@@ -146,7 +146,7 @@ export class Game {
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01; scene.add(ring);
     const disc = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 0.06, 96), new THREE.MeshStandardMaterial({ color: 0x15181f, roughness: 0.35, metalness: 0.7 }));
     disc.position.y = 0.03; disc.receiveShadow = true; scene.add(disc);
-    const key = new THREE.SpotLight(0xffffff, 300, 30, 0.6, 0.6, 1.5); key.position.set(4, 8, 4); key.castShadow = true; key.shadow.mapSize.set(1024, 1024); scene.add(key);
+    const key = new THREE.SpotLight(0xffffff, 160, 30, 0.6, 0.6, 1.5); key.position.set(4, 8, 4); key.castShadow = true; key.shadow.mapSize.set(1024, 1024); scene.add(key);
     const rim = new THREE.SpotLight(0x5fd0ff, 150, 30, 0.7, 0.8, 1.5); rim.position.set(-6, 4, -5); scene.add(rim);
     const warm = new THREE.SpotLight(0xff5060, 90, 30, 0.7, 0.8, 1.5); warm.position.set(6, 3, -6); scene.add(warm);
     scene.add(new THREE.HemisphereLight(0x8090a0, 0x101010, 0.4));

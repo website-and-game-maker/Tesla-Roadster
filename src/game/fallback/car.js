@@ -243,7 +243,7 @@ export function createRoadster({ paint = 'ultraRed', wheels = 'aero', quality = 
     update(dt, speed, steer) {
       spinAngle += (speed / WHEEL_R) * dt;
       for (const s of spins) s.rotation.x = spinAngle;
-      pivots[0].rotation.y = pivots[1].rotation.y = -steer;
+      pivots[0].rotation.y = pivots[1].rotation.y = steer; // +rad = left, same as src/car
     },
     dispose() {
       root.traverse((o) => { if (o.isMesh) { o.geometry.dispose(); } });

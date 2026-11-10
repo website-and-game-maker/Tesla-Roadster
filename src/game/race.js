@@ -94,7 +94,7 @@ export class Race {
       const data = P.ghosts[this.cfg.worldId];
       if (data && data.length > 10) {
         this.ghost = { data, model: g.mods.car.createRoadster({ paint: P.car.paint, wheels: P.car.wheels, quality: 'low' }) };
-        this.ghost.model.object.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.35; o.material.depthWrite = false; o.castShadow = false; } });
+        this.ghost.model.object.traverse((o) => { if (o.isMesh && o.material) { const src = o.material; o.material = src.clone(); o.material.onBeforeCompile = src.onBeforeCompile; o.material.customProgramCacheKey = src.customProgramCacheKey; o.material.transparent = true; o.material.opacity = 0.35; o.material.depthWrite = false; o.castShadow = false; } });
         this.ghost.model.object.visible = false;
         this.scene.add(this.ghost.model.object);
       }
@@ -265,7 +265,7 @@ export class Race {
         if (this.ghost) this.ghost.data = this.ghostRec;
         else if (this.ghostRec.length > 10) {
           this.ghost = { data: this.ghostRec, model: this.game.mods.car.createRoadster({ paint: P.car.paint, wheels: P.car.wheels, quality: 'low' }) };
-          this.ghost.model.object.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.35; o.material.depthWrite = false; o.castShadow = false; } });
+          this.ghost.model.object.traverse((o) => { if (o.isMesh && o.material) { const src = o.material; o.material = src.clone(); o.material.onBeforeCompile = src.onBeforeCompile; o.material.customProgramCacheKey = src.customProgramCacheKey; o.material.transparent = true; o.material.opacity = 0.35; o.material.depthWrite = false; o.castShadow = false; } });
           this.scene.add(this.ghost.model.object);
         }
       } else this.flash(`LAP ${lt.toFixed(3)}s`);
@@ -349,7 +349,7 @@ export class Race {
         body.rotation.z += (clamp(-v.accelLat * 0.006, -0.06, 0.06) - body.rotation.z) * Math.min(1, dt * 8);
         body.rotation.x += (clamp(-v.accelLong * 0.004, -0.04, 0.04) - body.rotation.x) * Math.min(1, dt * 6);
       }
-      c.model.update(dt, v.vF, v.steer);
+      c.model.update(dt, v.vF, -v.steer); // car API: +rad steers left
       c.model.setBrake && c.model.setBrake(v.brake > 0.1 && v.vF > 0.5);
       c.model.setReverse && c.model.setReverse(v.vF < -0.5);
       // tyre effects
