@@ -20,6 +20,8 @@ Per frame in a race: `ui.hud.update({ speedKmh, gear, lap, lapCount, lapTime, be
 
 The UI owns Esc / P / gamepad Start for pausing and emits `pause` / `resume`; the engine should not also bind them.
 
+Options: `opts.upgradeCosts = { motor: [...], inverter: [...], tires: [...], battery: [...] }` overrides upgrade prices. HUD also accepts `note` (short callout), `extra` (text under the timers), `driftChain`, `driftMult`.
+
 Other calls: `ui.showMenu()`, `ui.pause()`, `ui.showResults({...})`, `ui.setLoading(0..1, text)`, `ui.toast(text)`, `ui.setProfile({...})`, `ui.setCatalog({ paints, wheels })`, `ui.setResolvedQuality(tier)`.
 
 Graphics helpers: `detectQuality()`, `resolveGraphics(settings)`, `createAdaptiveQuality(tier, onChange)` (steps quality down when FPS stays under 40, never back up to a tier that was too slow).

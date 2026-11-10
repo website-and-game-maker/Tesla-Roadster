@@ -22,6 +22,7 @@ export function createHUD(root, getSettings) {
       <div class="h-time"><label>TIME</label><b class="h-cur">--:--.---</b></div>
       <div class="h-time"><label>BEST</label><b class="h-best">--:--.---</b></div>
       <div class="h-ghost"></div>
+      <div class="h-extra"></div>
     </div>
     <canvas class="h-map" width="360" height="360"></canvas>
     <div class="h-dash">
@@ -32,7 +33,8 @@ export function createHUD(root, getSettings) {
         <div class="h-bar h-batt"><label>BATTERY</label><div><i></i></div></div>
       </div>
     </div>
-    <div class="h-drift"><b>0</b><span>DRIFT</span></div>
+    <div class="h-drift"><b>0</b><span class="h-dlabel">DRIFT</span></div>
+    <div class="h-note"></div>
     <div class="h-msg"></div>
     <div class="h-wrong">WRONG WAY</div>
     <div class="h-elim"></div>
@@ -44,9 +46,9 @@ export function createHUD(root, getSettings) {
   const map = $('.h-map'), mctx = map.getContext('2d');
   const r = { speed: $('.h-speed'), unit: $('.h-unit'), gear: $('.h-gear'), cur: $('.h-cur'), best: $('.h-best'),
     pos: $('.h-pos'), lap: $('.h-lap'), boost: $('.h-boost i'), batt: $('.h-batt i'), drift: $('.h-drift'),
-    msg: $('.h-msg'), wrong: $('.h-wrong'), ghost: $('.h-ghost'), elim: $('.h-elim'), fps: $('.h-fps') };
+    msg: $('.h-msg'), wrong: $('.h-wrong'), ghost: $('.h-ghost'), elim: $('.h-elim'), fps: $('.h-fps'), note: $('.h-note'), extra: $('.h-extra'), dlabel: $('.h-dlabel') };
 
-  let shownSpeed = 0, lastMsg = '', msgTimer = 0, lastDrift = 0, mapBounds = null, mapPts = null;
+  let lastNote = '', noteTimer = 0, shownSpeed = 0, lastMsg = '', msgTimer = 0, lastDrift = 0, mapBounds = null, mapPts = null;
   let last = {};
   const setText = (node, key, v) => { if (last[key] !== v) { node.textContent = v; last[key] = v; } };
 
@@ -143,6 +145,16 @@ export function createHUD(root, getSettings) {
       if (msgTimer > 0) { msgTimer -= dt; if (msgTimer <= 0) { r.msg.classList.remove('pop'); lastMsg = d.message || ''; } }
       if (!d.message && msgTimer <= 0) lastMsg = '';
 
+      // Short centre callouts ('FINAL LAP', 'NEW BEST') shown below the big countdown text.
+      if (d.note && d.note !== lastNote) {
+        r.note.textContent = d.note; r.note.classList.remove('pop'); void r.note.offsetWidth; r.note.classList.add('pop');
+        noteTimer = 1.6; lastNote = d.note;
+      }
+      if (noteTimer > 0) { noteTimer -= dt; if (noteTimer <= 0) r.note.classList.remove('pop'); }
+      if (!d.note && noteTimer <= 0) lastNote = '';
+      setText(r.extra, 'extra', d.extra || '');
+      const chain = d.driftChain ? ` · ${d.driftChain} CHAIN` : '';
+      setText(r.dlabel, 'dlabel', `DRIFT${d.driftMult > 1 ? ' ×' + (+d.driftMult).toFixed(1) : ''}${chain}`);
       r.wrong.classList.toggle('on', !!d.wrongWay);
       if (d.ghostDelta != null) {
         const g = d.ghostDelta;

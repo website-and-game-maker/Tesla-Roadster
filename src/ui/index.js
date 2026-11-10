@@ -36,6 +36,8 @@ export function createUI(opts = {}) {
   let wheels = opts.wheels || DEFAULT_WHEELS;
   const tracks = opts.tracks || DEFAULT_TRACKS;
   const modes = opts.modes || DEFAULT_MODES;
+  // opts.upgradeCosts = { motor: [..], inverter: [..], ... } lets the game set the economy.
+  const upgrades = UPGRADES.map((u) => ({ ...u, cost: opts.upgradeCosts?.[u.id] || u.cost }));
 
   // ---------- state ----------
   const settings = loadSettings();
@@ -130,7 +132,8 @@ export function createUI(opts = {}) {
     current = name;
     const el = screens[name];
     el._onShow?.(data);
-    requestAnimationFrame(() => el.classList.add('active'));
+    // Only activate if still current: a quick second navigation must not leave two screens shown.
+    requestAnimationFrame(() => { if (current === name) el.classList.add('active'); });
     shell.dataset.screen = name;
     showroom?.setShot(name === 'garage' ? 'garage' : 'menu');
     // Focus the first control for keyboard/gamepad users.
@@ -353,7 +356,7 @@ export function createUI(opts = {}) {
     if (garageTab === 'upgrades') {
       foot.style.display = 'none';
       items.className = 'g-items g-upgrades';
-      items.innerHTML = UPGRADES.map((u) => {
+      items.innerHTML = upgrades.map((u) => {
         const lvl = profile.upgrades?.[u.id] || 0, max = u.cost.length, cost = u.cost[lvl];
         return `<div class="g-up"><div><b>${esc(u.name)}</b><p>${esc(u.desc)}</p>
           <div class="g-pips">${Array.from({ length: max }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('')}</div></div>
@@ -424,7 +427,7 @@ export function createUI(opts = {}) {
   }
   function purchase(kind, id) {
     let price;
-    if (kind === 'upgrade') { const u = UPGRADES.find((x) => x.id === id); price = u.cost[profile.upgrades?.[id] || 0]; }
+    if (kind === 'upgrade') { const u = upgrades.find((x) => x.id === id); price = u.cost[profile.upgrades?.[id] || 0]; }
     else price = (kind === 'paint' ? paints : wheels).find((x) => x.id === id)?.price || 0;
     if (price == null) return;
     if (profile.credits < price) { sfx('error'); toast(`Need ${fmtCr(price - profile.credits)} more`); return; }
@@ -655,7 +658,7 @@ export function createUI(opts = {}) {
 
   function refreshBindings() {
     shell.querySelectorAll('[data-bind=credits]').forEach((n) => { n.textContent = Math.round(profile.credits || 0).toLocaleString(); });
-    shell.querySelectorAll('[data-bind=stars]').forEach((n) => { n.textContent = profile.stars || 0; });
+    shell.querySelectorAll('[data-bind=stars]').forEach((n) => { n.textContent = typeof profile.stars === 'number' ? profile.stars : Object.values(profile.stars || {}).reduce((a, b) => a + (+b || 0), 0); });
     const p = paints.find((x) => x.id === settings.car.color);
     mainEl.querySelector('[data-bind=paintName]').textContent = p ? p.name : '';
   }
@@ -789,7 +792,7 @@ export function createUI(opts = {}) {
 }
 
 function typeLabel(t) {
-  return ({ race: 'Race', timetrial: 'Time Trial', elimination: 'Elimination', drift: 'Drift', sprint: 'Sprint' })[t] || (t ? t[0].toUpperCase() + t.slice(1) : 'Race');
+  return ({ race: 'Race', timetrial: 'Time Trial', timeattack: 'Time Attack', elimination: 'Elimination', elim: 'Elimination', drift: 'Drift', sprint: 'Sprint' })[t] || (t ? t[0].toUpperCase() + t.slice(1) : 'Race');
 }
 
 function defaultCareer(tracks) {
