@@ -65,25 +65,43 @@ export class Game {
       settings: this.profile.settings,
       tracks: this.worlds.map((w) => ({ id: w.id, name: w.name, desc: w.description, description: w.description, unlock: w.unlock ?? w.unlockStars ?? 0 })),
       modes: [{ id: 'career', name: 'Career' }, { id: 'quick', name: 'Quick Race' }, { id: 'timetrial', name: 'Time Trial' }, { id: 'multiplayer', name: 'Multiplayer' }],
-      paints: car.PAINTS.map((p) => ({ ...p, cost: costOf(car.PAINTS, p.id) })),
-      wheels: car.WHEELS.map((w) => ({ ...w, cost: costOf(car.WHEELS, w.id) })),
-      buildCarModel: (o) => car.createRoadster(o).object,
+      paints: car.PAINTS.map((p) => ({ ...p, cost: costOf(car.PAINTS, p.id), price: costOf(car.PAINTS, p.id) })),
+      wheels: car.WHEELS.map((w) => ({ ...w, cost: costOf(car.WHEELS, w.id), price: costOf(car.WHEELS, w.id) })),
+      buildCarModel: car.createRoadster,
+      skipTitle: false,
       statsFor: (up) => carStats(up),
       qualityInfo: () => this.quality.describe(),
     };
     let ui;
-    try { ui = this.mods.ui.createUI(opts); } catch (e) {
+    this.teamUI = !this.mods.uiIsFallback;
+    try {
+      if (this.teamUI) {
+        const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = new URL('../ui/ui.css', import.meta.url).href; document.head.appendChild(l);
+      }
+      ui = this.mods.ui.createUI(opts);
+    } catch (e) {
       console.error('[game] UI module failed, using fallback', e);
+      this.teamUI = false;
       ui = this.mods.fallback.ui.createUI(opts);
     }
     this.ui = ui;
     ui.on('sfx', (n) => this.audio.ui(n));
+    if (this.teamUI) { ui.builtinSounds = false; ui.on('ui-sound', (t) => this.audio.ui(t)); }
     ui.on('start', (cfg) => this.startRace(cfg));
-    ui.on('pause', () => this.pause());
-    ui.on('resume', () => this.resume());
+    ui.on('pause', () => this.pause(true));
+    ui.on('resume', () => this.resume(true));
     ui.on('restart', () => this.restart());
     ui.on('quit', () => this.quitToMenu());
-    ui.on('settings', (s) => { Object.assign(this.profile.settings, s); this.applySettings(); this.save(); });
+    ui.on('settings', (s) => {
+      const t = this.profile.settings;
+      Object.assign(t, s);
+      // team UI names -> profile names
+      if (s.masterVol != null) t.master = s.masterVol;
+      if (s.musicVol != null) t.music = s.musicVol;
+      if (s.sfxVol != null) t.sfx = s.sfxVol;
+      if (s.steerSensitivity != null) t.steerSens = s.steerSensitivity;
+      this.applySettings(); this.save();
+    });
     ui.on('purchase', (p) => this.purchase(p));
     ui.on('equip', (p) => this.equip(p));
     ui.on('preview', (p) => this.preview(p));
@@ -98,7 +116,7 @@ export class Game {
   pushProfile() {
     const P = this.profile, stars = totalStars(P);
     const events = this.career.map((e) => ({ ...e, locked: stars < e.unlockStars, stars: P.stars[e.id] || 0 }));
-    this.ui.setProfile && this.ui.setProfile({ ...P, totalStars: stars, careerEvents: events, unlocked: this.worlds.filter((w) => stars >= (w.unlock ?? 0)).map((w) => w.id) });
+    this.ui.setProfile && this.ui.setProfile({ ...P, stars, starsByEvent: P.stars, totalStars: stars, careerEvents: events.map((e) => ({ ...e, track: e.world, unlock: e.locked ? `${e.unlockStars}★` : '' })), unlocked: this.worlds.filter((w) => stars >= (w.unlock ?? 0)).map((w) => w.id) });
   }
 
   save() { saveProfile(this.profile); }
@@ -186,23 +204,29 @@ export class Game {
     car.setPaint(p && p.paint ? p.paint : this.profile.car.paint);
   }
 
-  equip({ kind, id }) {
+  equip(e) {
     const P = this.profile;
+    if (!e.kind) { // team UI sends the whole car: { paint, wheels }
+      if (e.paint && e.paint !== P.car.paint) this.equip({ kind: 'paint', id: e.paint });
+      if (e.wheels && e.wheels !== P.car.wheels) this.equip({ kind: 'wheel', id: e.wheels });
+      return;
+    }
+    const { kind, id } = e;
     if (kind === 'paint') { P.car.paint = id; this.showroomCar.setPaint(id); }
     if (kind === 'wheel') { P.car.wheels = id; this.showroomCar.setWheels(id); }
     this.save(); this.pushProfile();
   }
 
-  purchase({ kind, id }) {
+  purchase({ kind, id, price }) {
     const P = this.profile, car = this.mods.car;
     let cost = 0;
     if (kind === 'upgrade') {
-      const lv = P.upgrades[id]; if (lv >= MAX_UPGRADE) return;
-      cost = UPGRADE_COST[lv + 1];
+      const lv = P.upgrades[id] || 0; if (lv >= MAX_UPGRADE) return;
+      cost = price ?? UPGRADE_COST[lv + 1];
     } else cost = costOf(kind === 'paint' ? car.PAINTS : car.WHEELS, id);
     if (P.credits < cost) { this.ui.toast(`Need ${cost - P.credits} more credits`); this.audio.ui('back'); return; }
     P.credits -= cost;
-    if (kind === 'upgrade') P.upgrades[id]++;
+    if (kind === 'upgrade') P.upgrades[id] = (P.upgrades[id] || 0) + 1;
     else { P.owned[kind === 'paint' ? 'paints' : 'wheels'].push(id); this.equip({ kind, id }); }
     this.audio.ui('unlock');
     this.ui.toast(kind === 'upgrade' ? `${id[0].toUpperCase() + id.slice(1)} upgraded to level ${P.upgrades[id]}` : 'Unlocked!');
@@ -221,7 +245,7 @@ export class Game {
     } else if (sel.mode === 'timetrial') {
       cfg = { mode: 'timetrial', type: 'free', worldId: sel.track, laps: 99, opponents: 0, skill: 1, aiUpgrade: 0 };
     } else {
-      const d = sel.difficulty ?? 1;
+      const d = typeof sel.difficulty === 'string' ? ({ easy: 0, normal: 1, hard: 2 }[sel.difficulty] ?? 1) : (sel.difficulty ?? 1);
       cfg = { mode: 'quick', type: 'race', worldId: sel.track || this.worlds[0].id, laps: sel.laps || 3, opponents: sel.opponents ?? 5,
         skill: [0.82, 0.92, 1.0][d] || 0.92, aiUpgrade: Math.min(4, Math.max(0, avgUp + d - 1)) };
     }
@@ -230,38 +254,47 @@ export class Game {
   }
 
   launch(cfg) {
+    this.state = 'loading';
     if (this.race) { this.race.dispose(); this.race = null; }
-    this.ui.toast && this.ui.toast('Loading track…');
+    if (this.ui.setLoading) this.ui.setLoading(0.3, 'Loading track…'); else this.ui.toast && this.ui.toast('Loading track…');
     const go = () => {
       try {
         const race = new Race(this, cfg);
         race.build();
         this.race = race;
         this.state = 'race';
+        this.ui.setLoading && this.ui.setLoading(1);
         this.audio.setCarActive && this.audio.setCarActive(true);
         this.audio.music && this.audio.music.play && this.audio.music.play('race');
-        (this.ui.showHUD ? this.ui.showHUD() : this.ui.show('hud'));
+        this.showHUD();
         this.onResize();
       } catch (e) {
         console.error(e);
         this.ui.toast('Could not load that track: ' + e.message);
+        this.ui.setLoading && this.ui.setLoading(1);
         this.state = 'menu'; this.ui.showMenu();
       }
     };
     requestAnimationFrame(() => setTimeout(go, 30));
   }
 
-  pause() {
+  showHUD() {
+    if (this.ui.enterRace) this.ui.enterRace();
+    else if (this.ui.showHUD) this.ui.showHUD();
+    else this.ui.show('hud');
+  }
+
+  pause(fromUI = false) {
     if (this.state !== 'race') return;
     this.state = 'paused';
     this.audio.update && this.audio.update({ speed: 0, throttle: 0, brake: 0, slip: 0, surface: 'asphalt', boost: false }, 0.016);
-    this.ui.showPause();
+    if (!fromUI) this.ui.showPause();
   }
 
-  resume() {
-    if (this.state !== 'paused') { if (this.state === 'race') return; }
+  resume(fromUI = false) {
+    if (this.state !== 'paused') return;
     this.state = 'race'; this.last = performance.now();
-    this.ui.showHUD ? this.ui.showHUD() : this.ui.show('hud');
+    if (!fromUI) { if (this.ui.resume) this.ui.resume(); else this.showHUD(); }
   }
 
   restart() { if (this.lastCfg) this.launch(this.lastCfg); }
@@ -308,7 +341,9 @@ export class Game {
     this.save(); this.pushProfile();
     this.state = 'results';
     this.audio.music && this.audio.music.play && this.audio.music.play('results');
-    this.ui.showResults({ title, headline, stars, lines, credits, table: res.racers > 1 ? res.table : null, ...res });
+    const out = { ...res, title, headline, stars, lines, credits, table: res.racers > 1 ? res.table : null };
+    if (this.teamUI) Object.assign(out, { kicker: title, title: headline, time: res.totalTime, mode: cfg.mode, extra: lines.filter((l) => !['Position', 'Best lap', 'Total time', 'Drift score'].includes(l[0])) });
+    this.ui.showResults(out);
   }
 
   // ---------------------------------------------------------------- loop
@@ -318,22 +353,26 @@ export class Game {
     this.last = now;
     this.quality.frame(dt, this.state === 'race');
     this.inputState = this.input.poll(dt, this.profile.settings.steerSens);
-    if (this.input.wasPressed('Escape', 'KeyP', 'PadEscape')) {
+    if (!this.teamUI && this.input.wasPressed('Escape', 'KeyP', 'PadEscape')) {
       if (this.state === 'race') this.pause(); else if (this.state === 'paused') this.resume();
     }
-    if (this.state === 'race' || this.state === 'results') {
+    if ((this.state === 'race' || this.state === 'results') && this.race) {
       if (this.state === 'race') this.race.update(dt);
-      else this.race && this.race.update(dt * 0.25);
+      else this.race.update(dt * 0.25);
       if (this.race) {
-        this.ui.hud.update(this.race.hudData());
+        if (this.state === 'race' || !this.teamUI) this.ui.hud.update(this.race.hudData(), dt);
         this.renderer.render(this.race.scene, this.race.camera);
       }
     } else if (this.state === 'paused' && this.race) {
       this.renderer.render(this.race.scene, this.race.camera);
-    } else {
+    } else if (this.state === 'loading') {
+      // keep the last frame while the next track builds
+    } else if (!(this.teamUI && this.ui.showroom)) {
       this.updateShowroom(dt);
       this.renderer.render(this.showroom.scene, this.showroom.camera);
     }
+    // the team UI draws its own showroom; hide the game canvas while in menus
+    this.renderer.domElement.style.visibility = this.teamUI && this.ui.showroom && !this.race ? 'hidden' : '';
     this.input.endFrame();
   }
 }
