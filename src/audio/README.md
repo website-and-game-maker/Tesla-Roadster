@@ -2,7 +2,7 @@
 
 All game sound and music is synthesized live with the Web Audio API. There are no audio files to download or license, so it costs nothing in load time and is fully original.
 
-Try everything at `src/audio/demo.html` (serve the repo with any static server).
+Try everything at `audio-demo.html` (serve the repo with any static server).
 
 ## Use
 
