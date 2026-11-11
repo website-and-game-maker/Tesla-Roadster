@@ -24,7 +24,14 @@ Strong opinion: this beats Firebase or a paid realtime service for a racing game
 
 Up to 8 drivers per room. You get chat in the lobby, a live position HUD, a lap feed, a 30 s finish window after the winner crosses the line (then DNF), and a results screen.
 
-## Integration (for the game loop)
+## How it's wired into the game
+
+- `src/multiplayer/game-bridge.js` is attached by `Game.boot()`. It drives the menu team's Multiplayer and Lobby screens (or our own `LobbyUI` overlay when the fallback UI is loaded). When the host starts, it launches the same track on every player's game with `mode: 'multiplayer'`.
+- `src/multiplayer/online-race.js` is handed to `Race` as `cfg.online`. It places the car on its grid slot, runs the countdown from the shared clock, streams the car, draws the other players with name tags, reports laps and the finish, and ends the race when the host publishes results.
+- In the results screen, **Retry** takes you back to the room's lobby and **Continue** leaves the room.
+- Invite links (`?room=CODE`) join on load.
+
+## Integration API (for other engines)
 
 ```js
 import { Multiplayer, LobbyUI, RemoteCars, readRoomFromUrl } from './src/multiplayer/index.js';
