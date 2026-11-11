@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>World Preview</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font: 14px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; color: #eee; }
+  canvas { display: block; }
+  #panel { position: fixed; top: 12px; left: 12px; right: 12px; max-width: 360px; background: rgba(12,13,16,.78); backdrop-filter: blur(8px); border-radius: 12px; padding: 12px 14px; box-sizing: border-box; }
+  #panel h1 { font-size: 15px; margin: 0 0 2px; }
+  #panel p { margin: 0 0 10px; color: #aab; font-size: 12px; }
+  label { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; }
+  select, input[type=range] { flex: 1; max-width: 200px; }
+  select { background: #1c1e24; color: #eee; border: 1px solid #333; border-radius: 6px; padding: 4px; }
+  #stats { position: fixed; bottom: 12px; left: 12px; font: 12px ui-monospace, monospace; color: #9fb; background: rgba(0,0,0,.5); padding: 6px 8px; border-radius: 6px; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 18px; background: rgba(0,0,0,.6); }
+  #loading[hidden] { display: none; }
+  .row { display: flex; gap: 6px; }
+  button { flex: 1; background: #e31937; color: #fff; border: 0; border-radius: 6px; padding: 7px; font-weight: 600; }
+  button.alt { background: #2a2d35; }
+</style>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+</head>
+<body>
+<div id="panel">
+  <h1 id="title">World preview</h1>
+  <p id="desc"></p>
+  <label>World <select id="world"></select></label>
+  <label>Quality <select id="quality"><option>low</option><option>medium</option><option selected>high</option><option>ultra</option></select></label>
+  <label>Time <input id="time" type="range" min="0" max="24" step="0.1"></label>
+  <label>Weather <select id="weather"></select></label>
+  <label>Tour speed <input id="speed" type="range" min="0" max="90" step="1" value="35"></label>
+  <div class="row"><button id="cam">Chase cam</button><button id="hide" class="alt">Hide panel</button></div>
+</div>
+<div id="stats"></div>
+<div id="loading">Building world…</div>
+<script type="module">
+import * as THREE from 'three';
+import { WORLDS, createWorld } from './src/worlds/index.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.2, 6000);
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// Placeholder car: a low red wedge, so ground following is visible.
+const car = new THREE.Group();
+const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.75, 4.1), new THREE.MeshStandardMaterial({ color: 0xc8102e, metalness: 0.6, roughness: 0.3 }));
+body.position.y = 0.6;
+body.castShadow = true;
+const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.45, 1.8), new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8, roughness: 0.1 }));
+cabin.position.set(0, 1.15, -0.3);
+cabin.castShadow = true;
+car.add(body, cabin);
+scene.add(car);
+
+const params = new URLSearchParams(location.search);
+const $ = (id) => document.getElementById(id);
+for (const w of WORLDS) $('world').add(new Option(`${w.order + 1}. ${w.name} (${w.location})`, w.id));
+$('world').value = params.get('world') || WORLDS[0].id;
+$('quality').value = params.get('quality') || 'high';
+
+let world = null;
+let dist = 0;
+let chase = true;
+const info = {};
+
+function build() {
+  $('loading').hidden = false;
+  setTimeout(() => {
+    if (world) world.dispose();
+    const id = $('world').value;
+    const meta = WORLDS.find((w) => w.id === id);
+    const t0 = performance.now();
+    const q = $('quality').value;
+    renderer.shadowMap.enabled = q !== 'low';
+    world = createWorld(id, {
+      scene, renderer, quality: q,
+      timeOfDay: params.has('time') ? +params.get('time') : meta.defaultTime,
+      weather: params.get('weather') || meta.defaultWeather,
+    });
+    const ms = performance.now() - t0;
+    $('title').textContent = `${meta.name}`;
+    $('desc').textContent = `${meta.description} ${meta.lengthMeters} m lap, ${meta.laps} laps, gravity ${meta.gravity} m/s², gold ${meta.par.gold}s. Built in ${ms.toFixed(0)} ms.`;
+    $('time').value = world.timeOfDay;
+    $('weather').innerHTML = '';
+    for (const w of world.weathers) $('weather').add(new Option(w, w));
+    $('weather').value = world.weather;
+    dist = 0;
+    $('loading').hidden = true;
+    window.__world = world;
+  }, 30);
+}
+$('world').onchange = build;
+$('quality').onchange = build;
+$('time').oninput = (e) => world.setTimeOfDay(+e.target.value);
+$('weather').onchange = (e) => world.setWeather(e.target.value);
+$('cam').onclick = () => { chase = !chase; $('cam').textContent = chase ? 'Chase cam' : 'Drone cam'; };
+$('hide').onclick = () => { $('panel').hidden = true; setTimeout(() => ($('panel').hidden = false), 8000); };
+build();
+
+const clock = new THREE.Clock();
+let frames = 0, acc = 0, fps = 0;
+const look = new THREE.Vector3();
+const fwd = new THREE.Vector3();
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (!world) return;
+  const speed = +$('speed').value;
+  dist = (dist + speed * dt) % world.trackLength;
+  const t = dist / world.trackLength;
+  const p = world.trackCurve.getPointAt(t);
+  world.trackCurve.getTangentAt(t, fwd);
+  // Drive a gentle racing line weave.
+  const ti = world.getTrackInfo(p.x, p.z, -1, info);
+  const lat = Math.sin(dist * 0.01) * world.roadHalfWidth * 0.4;
+  const x = p.x + ti.right[0] * lat;
+  const z = p.z + ti.right[2] * lat;
+  car.position.set(x, world.getGroundHeight(x, z), z);
+  car.rotation.y = Math.atan2(fwd.x, fwd.z);
+  car.rotation.x = -Math.asin(Math.max(-1, Math.min(1, fwd.y)));
+
+  if (chase) {
+    camera.position.set(x - fwd.x * 9, car.position.y + 3.2, z - fwd.z * 9);
+    const gy = world.getGroundHeight(camera.position.x, camera.position.z) + 1;
+    if (camera.position.y < gy) camera.position.y = gy;
+    look.set(x + fwd.x * 6, car.position.y + 1.2, z + fwd.z * 6);
+  } else {
+    const a = performance.now() * 0.00005;
+    camera.position.set(x + Math.cos(a) * 140, car.position.y + 70, z + Math.sin(a) * 140);
+    look.copy(car.position);
+  }
+  camera.lookAt(look);
+  world.update(dt, car.position, camera);
+  renderer.render(scene, camera);
+
+  frames++; acc += dt;
+  if (acc > 0.5) {
+    fps = frames / acc; frames = 0; acc = 0;
+    const r = renderer.info.render;
+    $('stats').textContent = `${fps.toFixed(0)} fps · ${r.calls} draws · ${(r.triangles / 1000).toFixed(0)}k tris · ${world.getSurface(x, z).type} grip ${world.getSurface(x, z).grip.toFixed(2)}`;
+  }
+}
+frame();
+</script>
+</body>
+</html>
