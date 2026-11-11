@@ -22,7 +22,7 @@ export const MP_CONFIG = {
   interpolationDelayMs: 100,
   maxExtrapolationMs: 250,
 
-  countdownMs: 4000,
+  countdownMs: 6000, // long enough for slower phones to load the track
   // After the first car finishes, everyone else gets this long.
   finishGraceMs: 30000,
   // Quick-match lobbies start automatically after this long with 2+ players.

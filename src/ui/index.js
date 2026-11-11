@@ -782,7 +782,7 @@ export function createUI(opts = {}) {
     showLobby(data = {}) {
       lobby = { ...lobby, ...data };
       renderLobby();
-      if (current !== 'lobby') { stack.length = 0; stack.push('main', 'play', 'multiplayer'); current = null; show('lobby'); }
+      if (current !== 'lobby') { screens[current]?.classList.remove('active'); stack.length = 0; stack.push('main', 'play', 'multiplayer'); current = null; show('lobby'); }
     },
     setMultiplayerStatus: setMpStatus,
     /** Change graphics tier from the engine's adaptive loop so the menu reflects it. */

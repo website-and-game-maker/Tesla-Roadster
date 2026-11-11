@@ -29,6 +29,7 @@ export class Race {
     this.eliminated = [];
     this.tmp = {};
     this.acc = 0;
+    this.online = cfg.online || null; // multiplayer controller (src/multiplayer/online-race.js)
   }
 
   build() {
@@ -116,6 +117,7 @@ export class Race {
     this.camera.far = q.drawDist * 1.6;
     if (this.scene.fog) { this.scene.fog.far = Math.min(this.scene.fog.far || q.drawDist, q.drawDist); this.scene.fog.near = Math.min(this.scene.fog.near, q.drawDist * 0.2); }
     this.camera.updateProjectionMatrix();
+    if (this.online) this.online.onBuild(this);
     this.placeCamera(1, true);
   }
 
@@ -147,7 +149,10 @@ export class Race {
   update(dt) {
     this.time += dt; this.stateT += dt;
     const inp = this.playerInput;
-    if (this.state === 'intro') {
+    if (this.online) {
+      this.online.preUpdate(this);
+      if (this.state === 'race' && this.stateT > 1 && this.message === 'GO!') this.message = '';
+    } else if (this.state === 'intro') {
       if (this.stateT > 2.2 || inp.throttle > 0 || this.game.input.wasPressed('Space', 'Enter')) { this.state = 'countdown'; this.stateT = 0; this.lastCount = 4; }
     } else if (this.state === 'countdown') {
       const n = 3 - Math.floor(this.stateT);
@@ -256,6 +261,7 @@ export class Race {
   onPlayerLap(lt) {
     const P = this.game.profile, wid = this.cfg.worldId;
     this.game.audio.ui('lap');
+    if (this.online) this.online.onLap(lt, this.player.lapTimes.length);
     if (this.cfg.type === 'free') {
       const isBest = !P.best[wid] || lt < P.best[wid];
       if (isBest) {
@@ -298,7 +304,8 @@ export class Race {
     c.finished = true; c.finishTime = this.raceTime;
     if (c.isPlayer) {
       this.game.audio.ui('lap');
-      this.message = this.position(c) === 1 ? 'VICTORY' : 'FINISH';
+      this.message = !this.online && this.position(c) === 1 ? 'VICTORY' : 'FINISH';
+      if (this.online) this.online.onFinish(this);
       this.state = 'finished'; this.stateT = 0;
       this.drift.score += this.drift.chain; this.drift.chain = 0;
     }
@@ -389,7 +396,8 @@ export class Race {
     g.audio.music && g.audio.music.setIntensity && g.audio.music.setIntensity(clamp(pv.speed / 70, 0, 1));
 
     // end of race flow
-    if (this.state === 'finished' && this.stateT > 3.5 && !this.ended) this.endRace();
+    if (this.state === 'finished' && this.stateT > 3.5 && !this.ended && !this.online) this.endRace();
+    if (this.online) this.online.postUpdate(this);
     if (this.cfg.type === 'free' && this.state === 'race') this.message = this.message === 'GO!' ? 'GO!' : '';
   }
 
@@ -443,12 +451,17 @@ export class Race {
     let extra = '';
     if (type === 'timeattack') extra = `GOLD ${this.targets[0].toFixed(2)} · SILVER ${this.targets[1].toFixed(2)} · BRONZE ${this.targets[2].toFixed(2)}`;
     if (type === 'drift') extra = `TARGETS ${this.targets.map((t) => t.toLocaleString()).join(' / ')}`;
+    let position = this.cars.length > 1 ? this.position(p) : 0, racers = this.cars.length - this.eliminated.length;
+    if (this.online) {
+      const o = this.online.hud(this);
+      position = o.position; racers = o.racers; others.push(...o.others); extra = o.extra;
+    }
     return {
       speedKmh: Math.abs(v.vF) * 3.6,
       lap: p.crossings, lapCount: type === 'free' ? 99 : this.cfg.laps,
       lapTime, bestLap: type === 'free' ? (this.game.profile.best[this.cfg.worldId] || p.bestLap) : (p.bestLap || null),
       extra,
-      position: this.cars.length > 1 ? this.position(p) : 0, racers: this.cars.length - this.eliminated.length,
+      position, racers,
       boost: v.boost / v.stats.boostCap, boosting: v.boosting, battery: v.boost / v.stats.boostCap,
       message: this.message, note: this.note,
       driftScore: type === 'drift' || d.score > 0 || d.chain > 0 ? d.score : 0, driftChain: d.chain, driftMult: d.mult,
@@ -463,6 +476,7 @@ export class Race {
     if (this.ended) return;
     this.ended = true;
     const p = this.player, order = this.order();
+    if (this.online) { this.game.onRaceEnd(this.online.result(this)); return; }
     const result = {
       type: this.cfg.type, position: order.indexOf(p) + 1, racers: this.cars.length,
       bestLap: p.bestLap, totalTime: p.finishTime, driftScore: Math.round(this.drift.score),
@@ -478,6 +492,7 @@ export class Race {
     if (this.ghost) { this.ghost.model.dispose && this.ghost.model.dispose(); }
     this.skids.dispose(); this.smoke.dispose();
     this.world.dispose && this.world.dispose();
+    if (this.online) this.online.dispose();
   }
 }
 

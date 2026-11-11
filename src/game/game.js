@@ -9,6 +9,7 @@ import { carStats } from '../physics/vehicle.js';
 import { loadModules } from './registry.js';
 import { buildCareer, totalStars, starsFor, EVENT_TYPES, UPGRADE_COST, MAX_UPGRADE } from './career.js';
 import { Race } from './race.js';
+import { attachMultiplayer } from '../multiplayer/game-bridge.js';
 
 const fmt = (t) => { if (t == null) return '--'; const m = Math.floor(t / 60); return `${m}:${(t - m * 60).toFixed(3).padStart(6, '0')}`; };
 const costOf = (list, id) => { const i = list.findIndex((x) => x.id === id); const it = list[i]; return it && it.cost != null ? it.cost : (i < 3 ? 0 : 400 * i); };
@@ -46,6 +47,9 @@ export class Game {
     setLoading('Building menus…', 0.7);
     this.buildUI();
     this.buildShowroom();
+    if (this.mods.multiplayer) {
+      try { this.online = attachMultiplayer(this, THREE); } catch (e) { console.error('[game] multiplayer failed to start', e); }
+    }
     this.applyPreset(this.quality.preset);
     this.inputState = this.input.state;
     this.state = 'menu';
@@ -299,10 +303,14 @@ export class Game {
     if (!fromUI) { if (this.ui.resume) this.ui.resume(); else this.showHUD(); }
   }
 
-  restart() { if (this.lastCfg) this.launch(this.lastCfg); }
+  restart() {
+    if (this.lastCfg && this.lastCfg.mode === 'multiplayer') { this.online && this.online.backToLobby(); return; }
+    if (this.lastCfg) this.launch(this.lastCfg);
+  }
 
-  quitToMenu() {
+  quitToMenu(leaveRoom = true) {
     if (this.race) { this.race.dispose(); this.race = null; }
+    if (leaveRoom && this.lastCfg && this.lastCfg.mode === 'multiplayer' && this.online) this.online.leave();
     this.state = 'menu';
     this.audio.setCarActive && this.audio.setCarActive(false);
     this.audio.update && this.audio.update({ speed: 0, throttle: 0, brake: 0, slip: 0, surface: 'asphalt', boost: false }, 0.016);
@@ -330,7 +338,7 @@ export class Game {
       if (newly.length) lines.push(['Unlocked', newly.map((w) => w.name).join(', ')]);
     } else {
       credits = res.racers > 1 ? Math.max(0, (res.racers - res.position + 1) * 50 * Math.min(cfg.laps, 5)) : 0;
-      title = cfg.mode === 'quick' ? 'Quick Race' : 'Time Trial';
+      title = cfg.mode === 'quick' ? 'Quick Race' : cfg.mode === 'multiplayer' ? 'Online Race' : 'Time Trial';
       headline = res.racers > 1 ? (res.position === 1 ? 'Victory' : `P${res.position}`) : 'Session over';
     }
     if (res.type === 'race' || res.type === 'elim') lines.unshift(['Position', `${res.position} / ${res.racers}`]);

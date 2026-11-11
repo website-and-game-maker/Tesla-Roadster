@@ -242,12 +242,12 @@ export class RaceSession extends Emitter {
   }
 
   reportLap(lap, lapMs) {
-    if (this.isHost) this._onLap(this.selfId, lap, lapMs);
+    if (this.isHost) this._onLap(this.selfId, lap, Math.round(lapMs));
     else this._sendHost({ k: 'lap', lap, ms: Math.round(lapMs) });
   }
 
   reportFinish(totalMs, bestLapMs) {
-    if (this.isHost) this._onFinish(this.selfId, totalMs, bestLapMs);
+    if (this.isHost) this._onFinish(this.selfId, Math.round(totalMs), Math.round(bestLapMs || 0));
     else this._sendHost({ k: 'fin', ms: Math.round(totalMs), best: Math.round(bestLapMs || 0) });
   }
 

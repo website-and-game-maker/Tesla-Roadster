@@ -103,8 +103,9 @@ function h(tag, props = {}, ...kids) {
 }
 
 export class LobbyUI {
-  constructor(mp, { container = document.body, tracks = [{ id: 'default', name: 'Circuit' }], onRaceStart, onExit, formatTime } = {}) {
+  constructor(mp, { container = document.body, tracks = [{ id: 'default', name: 'Circuit' }], onRaceStart, onExit, formatTime, handleResults = true } = {}) {
     this.mp = mp;
+    this.handleResults = handleResults;
     this.tracks = tracks;
     this.onRaceStart = onRaceStart || (() => {});
     this.onExit = onExit || (() => {});
@@ -129,7 +130,7 @@ export class LobbyUI {
       mp.on('ping', () => this._renderHud()),
       mp.on('lap', (e) => this._toast(`${e.name} · lap ${e.lap} · ${this.fmt(e.ms)}`)),
       mp.on('grace', (g) => this._toast(`First car finished! ${Math.round((g.until - this.mp.session.hostNow()) / 1000)}s left`)),
-      mp.on('results', (r) => this.showResults(r)),
+      mp.on('results', (r) => this.handleResults && this.showResults(r)),
       mp.on('chat', (m) => this._onChat(m)),
       mp.on('player-joined', (p) => this._toast(`${p.name} joined`)),
       mp.on('player-left', (p) => this._toast(`${p.name} left`)),
@@ -243,8 +244,8 @@ export class LobbyUI {
       return;
     }
     if (phase === 'results') {
-      if (this.screen !== 'results') this.showResults(s.results || []);
-      return;
+      if (this.handleResults && this.screen !== 'results') this.showResults(s.results || []);
+      if (this.handleResults || this.ov.hidden) return;
     }
     this.hud.hidden = true;
     if (!force && this.screen !== 'lobby' && this.screen !== 'menu' && this.screen !== 'create' && this.screen !== 'results') return;
