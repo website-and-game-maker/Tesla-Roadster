@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Roadster Rush</title>
+<meta name="description" content="Electric roadster racing in your browser. Career, time trials, drift events and online races.">
+<meta name="theme-color" content="#07080c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Roadster Rush">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+  html, body { margin: 0; height: 100%; background: #07080c; overflow: hidden; overscroll-behavior: none; touch-action: none; -webkit-tap-highlight-color: transparent; }
+  body > canvas { display: block; position: fixed; inset: 0; width: 100vw !important; height: 100vh !important; height: 100dvh !important; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #07080c; color: #f3f5f8; font-family: system-ui, -apple-system, sans-serif; z-index: 100; transition: opacity .5s; }
+  #loading .t { font-size: 44px; font-weight: 900; font-style: italic; letter-spacing: .06em; text-align: center; }
+  #loading .t span { color: #ff2a3d; }
+  #loading .bar { width: 240px; height: 3px; background: #1d2230; margin: 18px auto 10px; overflow: hidden; }
+  #loading .bar i { display: block; height: 100%; width: 0; background: #ff2a3d; transition: width .3s; }
+  #loading .m { color: #9aa3b2; font-size: 12px; letter-spacing: .3em; text-transform: uppercase; text-align: center; }
+  #loading.done { opacity: 0; pointer-events: none; }
+</style>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+</head>
+<body>
+<div id="loading"><div><div class="t">ROADSTER <span>RUSH</span></div><div class="bar"><i></i></div><div class="m">Loading</div></div></div>
+<noscript>This game needs JavaScript and WebGL.</noscript>
+<script type="module">
+  import { Game } from './src/game/game.js';
+  const L = document.getElementById('loading');
+  const setLoading = (msg, p) => {
+    L.querySelector('.m').textContent = msg || 'Ready';
+    L.querySelector('i').style.width = Math.round(p * 100) + '%';
+    if (p >= 1) setTimeout(() => L.classList.add('done'), 200);
+  };
+  const game = new Game();
+  window.game = game;
+  game.boot(document.body, setLoading).catch((e) => {
+    console.error(e);
+    L.querySelector('.m').textContent = 'Could not start: ' + (e.message || e) + '. WebGL may be disabled.';
+  });
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
