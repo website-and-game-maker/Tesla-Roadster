@@ -38,7 +38,7 @@ export class Race {
     if (w.setShadowSize) w.setShadowSize(q.shadowSize);
     this.track = new TrackSampler(w.trackCurve, { roadHalfWidth: w.roadHalfWidth || 7, wallHalfWidth: w.wallHalfWidth || 11 },
       typeof w.getGroundHeight === 'function' ? (x, z) => w.getGroundHeight(x, z) : null);
-    const gScale = clamp(0.35 + 0.65 * ((w.gravity || 9.81) / 9.81), 0.35, 1.2);
+    const gScale = clamp(0.72 + 0.28 * ((w.gravity || 9.81) / 9.81), 0.72, 1.1); // low gravity = floatier, but still drivable
     this.night = !!(w.night || (w.def && w.def.night));
     if (!w.sun) {
       const sun = new THREE.DirectionalLight(0xffffff, 2.5); sun.castShadow = true; this.scene.add(sun, sun.target);
