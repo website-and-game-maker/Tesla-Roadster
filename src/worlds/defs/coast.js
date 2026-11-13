@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { fbm, ridged, smoothstep } from '../noise.js';
-import { ramp, std, plant } from './util.js';
+import { ramp, std, plant, solid } from './util.js';
 
 // World 1: a clifftop coastal road at golden hour. The starter world:
 // wide, flowing, forgiving, and gorgeous at sunset.
@@ -14,13 +14,13 @@ export default {
   gravity: 9.81,
   laps: 3,
   goldSpeed: 41, // average m/s needed for a gold medal
-  unlock: 0, // total stars needed
   music: 'chill',
   points: [
     [0, 0, 40], [0, 200, 42], [-40, 380, 45], [-160, 500, 50], [-320, 540, 48],
     [-430, 470, 44], [-470, 320, 38], [-430, 160, 30], [-490, 0, 26], [-525, -180, 30],
     [-430, -340, 36], [-260, -390, 40], [-120, -310, 42], [-50, -160, 41],
   ],
+  flight: { altitude: 28, swing: 40, waves: 3, weave: 5, weaveWaves: 4, ceiling: 400, keys: [{ u: 0.5, alt: 8, width: 0.03 }] },
   roadWidth: 15,
   runoff: 4,
   roadStyle: 'highway',
@@ -76,6 +76,8 @@ export default {
     roof.position.set(6, 5.6, 0);
     lh.add(tower, band, lamp, cap, house, roof);
     g.add(plant(lh, ctx, -600, 260));
+    solid(ctx, -600, 260, 3.3, 3.3, 27);
+    solid(ctx, -594, 260, 4.2, 3.2, 7);
     ctx.glow(lamp.material, 5);
     // Rotating beam.
     const beam = new THREE.Mesh(

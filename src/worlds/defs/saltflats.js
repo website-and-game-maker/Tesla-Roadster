@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { fbm, ridged, smoothstep } from '../noise.js';
-import { mixHex, std, plant } from './util.js';
+import { mixHex, std, plant, solid } from './util.js';
 
 // World 2: a dry lake bed built for top speed. Huge straights, mountains on
 // the horizon, heat shimmer and the odd dust storm.
@@ -14,13 +14,13 @@ export default {
   gravity: 9.81,
   laps: 2,
   goldSpeed: 62,
-  unlock: 8, // total stars needed (matches the career's 4 events x 3 stars per world)
   music: 'drive',
   points: [
     [0, 0, 0], [0, 450, 0], [0, 900, 0], [60, 1300, 0], [260, 1500, 0], [560, 1520, 0],
     [780, 1350, 0], [820, 1000, 0], [700, 700, 0], [760, 400, 0], [820, 0, 0],
     [760, -400, 0], [560, -560, 0], [260, -560, 0], [60, -400, 0],
   ],
+  flight: { altitude: 18, swing: 70, waves: 4, weave: 8, weaveWaves: 6, ceiling: 450, goldSpeed: 85, keys: [{ u: 0.1, alt: 5, width: 0.02 }, { u: 0.55, alt: 5, width: 0.02 }] },
   roadWidth: 18,
   runoff: 6,
   roadStyle: 'race',
@@ -70,6 +70,7 @@ export default {
       stand.add(post);
     }
     g.add(plant(stand, ctx, -40, 200));
+    solid(ctx, -42, 200, 10, 62, 12);
     const tower = new THREE.Group();
     const shaft = new THREE.Mesh(new THREE.BoxGeometry(5, 30, 5), std(0x24262b, { metalness: 0.5 }));
     shaft.position.y = 15;
@@ -77,6 +78,7 @@ export default {
     board.position.set(-3, 24, 0);
     tower.add(shaft, board);
     g.add(plant(tower, ctx, -38, 360));
+    solid(ctx, -39, 360, 4, 4, 30);
     // A giant white factory on the horizon, the kind that builds cars.
     const fac = new THREE.Group();
     const hall = new THREE.Mesh(new THREE.BoxGeometry(900, 40, 260), std(0xf4f4f2, { roughness: 0.5 }));
@@ -85,6 +87,7 @@ export default {
     stripe.position.y = 34;
     fac.add(hall, stripe);
     g.add(plant(fac, ctx, 1400, -250, 0.4));
+    solid(ctx, 1400, -250, 465, 295, 40);
     return g;
   },
 };

@@ -258,7 +258,6 @@ export function scatterProps(rules, ctx) {
   const { track, heightFn, quality, bounds, seed } = ctx;
   const group = new THREE.Group();
   group.name = 'props';
-  const rand = mulberry32(seed * 31 + 7);
   const glow = [];
   const tmp = {};
   const m4 = new THREE.Matrix4();
@@ -273,7 +272,12 @@ export function scatterProps(rules, ctx) {
     return true;
   };
 
-  for (const rule of rules) {
+  const colliders = [];
+  rules.forEach((rule, ruleIndex) => {
+    // Each rule has its own random stream, so solid props land in exactly
+    // the same spots on every quality tier (multiplayer and physics depend on it).
+    const rand = mulberry32(seed * 31 + 7 + ruleIndex * 7919);
+    const solid = rule.solid ?? SOLID.has(rule.kind);
     const placements = [];
     if (rule.along) {
       const step = Math.max(1, Math.round(rule.along / track.spacing));
@@ -292,11 +296,13 @@ export function scatterProps(rules, ctx) {
         }
       }
     } else {
-      const want = Math.round(rule.count * quality.propDensity);
+      // Solid props are never thinned out on low quality: you can crash into them.
+      const want = Math.round(rule.count * (solid ? 1 : quality.propDensity));
       let tries = want * 8;
       const near = track.wallHalfWidth + (rule.near ?? 6);
       const far = rule.far ?? Infinity;
-      const b = bounds;
+      // Solid props use fixed bounds so they match on every quality tier.
+      const b = solid ? ctx.solidBounds || bounds : bounds;
       while (placements.length < want && tries-- > 0) {
         const x = b.minX + rand() * (b.maxX - b.minX);
         const z = b.minZ + rand() * (b.maxZ - b.minZ);
@@ -322,13 +328,19 @@ export function scatterProps(rules, ctx) {
         placements.push([x, y, z, rand() * Math.PI * 2]);
       }
     }
-    if (!placements.length) continue;
+    if (!placements.length) return;
 
     const parts = KINDS[rule.kind]({ ...(rule.options || {}), seed: seed + placements.length });
     const [smin, smax] = rule.scale || [1, 1];
     const scales = placements.map(() => smin + rand() * (smax - smin));
     const jitter = placements.map(() => rand());
     const squash = placements.map(() => (rule.boxScale ? rule.boxScale(rand) : null));
+    if (solid) {
+      placements.forEach(([x, y, z, yaw], k) => {
+        const c = colliderFor(rule, x, y - (rule.sink ? rule.sink * scales[k] : 0), z, yaw, scales[k]);
+        if (c) colliders.push(...c);
+      });
+    }
     for (const part of parts) {
       const inst = new THREE.InstancedMesh(part.geo, part.mat, placements.length);
       inst.castShadow = quality.shadows && part.shadow !== false && rule.shadow !== false;
@@ -365,10 +377,11 @@ export function scatterProps(rules, ctx) {
       if (part.nightGlow) glow.push({ mat: part.mat, max: part.nightGlow });
       if (part.nightOpacity) glow.push({ mat: part.mat, max: part.nightOpacity, opacity: true });
     }
-  }
+  });
 
   return {
     group,
+    colliders,
     // Night factor 0..1: switch on window lights, street lamps, domes.
     setNight(n) {
       for (const g of glow) {
@@ -376,6 +389,43 @@ export function scatterProps(rules, ctx) {
       }
     },
   };
+}
+
+// Props you can crash into when flying. Trees are left out on purpose: flight
+// paths stay over the road where there are none, and foliage is soft.
+const SOLID = new Set(['building', 'boulder', 'windTurbine', 'dome', 'ice', 'solarPanel', 'island']);
+
+function colliderFor(rule, x, y, z, yaw, sc) {
+  const o = rule.options || {};
+  switch (rule.kind) {
+    case 'building': {
+      const odd = Math.round(yaw / (Math.PI / 2)) % 2 !== 0;
+      const hw = ((odd ? o.d : o.w) ?? 20) * sc * 0.5;
+      const hd = ((odd ? o.w : o.d) ?? 20) * sc * 0.5;
+      const h = (o.h ?? 40) * sc;
+      return [box(x - hw, y - 2, z - hd, x + hw, y + h, z + hd)];
+    }
+    case 'boulder':
+    case 'rock':
+    case 'ice':
+      return [sphere(x, y + 0.25 * sc, z, 0.95 * sc)];
+    case 'windTurbine':
+      return [box(x - 1.8 * sc, y, z - 1.8 * sc, x + 1.8 * sc, y + 70 * sc, z + 1.8 * sc), sphere(x, y + 72 * sc, z, 33 * sc)];
+    case 'dome':
+      return [sphere(x, y, z, 6.2 * sc)];
+    case 'solarPanel':
+      return [box(x - 3.4 * sc, y, z - 3.4 * sc, x + 3.4 * sc, y + 2.4 * sc, z + 3.4 * sc)];
+    default:
+      return null;
+  }
+}
+
+export function box(x0, y0, z0, x1, y1, z1) {
+  return { type: 'box', min: new THREE.Vector3(x0, y0, z0), max: new THREE.Vector3(x1, y1, z1) };
+}
+
+export function sphere(x, y, z, r) {
+  return { type: 'sphere', center: new THREE.Vector3(x, y, z), radius: r };
 }
 
 export { KINDS, rockGeometry };

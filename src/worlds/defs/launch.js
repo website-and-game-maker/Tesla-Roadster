@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { fbm, smoothstep } from '../noise.js';
-import { mixHex, std, plant } from './util.js';
+import { mixHex, std, plant, solid } from './util.js';
 
 // World 5: a coastal rocket launch complex. Fast flowing loop around the
 // pad; at the end of the season the rocket lifts off and opens the way to
@@ -15,13 +15,13 @@ export default {
   gravity: 9.81,
   laps: 3,
   goldSpeed: 47,
-  unlock: 39, // total stars needed (matches the career's 4 events x 3 stars per world)
   music: 'epic',
   points: [
     [0, 0, 2], [40, 300, 2], [150, 520, 3], [380, 620, 3], [640, 560, 3], [760, 360, 3],
     [700, 120, 2], [520, 20, 2], [480, -180, 2], [620, -380, 3], [480, -560, 3],
     [200, -560, 2], [40, -380, 2], [-20, -200, 2],
   ],
+  flight: { altitude: 24, swing: 95, waves: 2, weave: 7, ceiling: 500, goldSpeed: 75 },
   roadWidth: 16,
   runoff: 5,
   roadStyle: 'race',
@@ -96,6 +96,10 @@ export default {
       pad.add(mast);
     }
     g.add(plant(pad, ctx, 330, 270));
+    solid(ctx, 330, 270, 35, 35, 6);
+    solid(ctx, 330, 270, 4.8, 4.8, 88);
+    solid(ctx, 316, 270, 5, 5, 96);
+    for (const [mx, mz] of [[30, 30], [-30, -30], [30, -30]]) solid(ctx, 330 + mx, 270 + mz, 1.2, 1.2, 110);
     // Vehicle assembly building on the horizon.
     const vab = new THREE.Group();
     const box = new THREE.Mesh(new THREE.BoxGeometry(160, 160, 130), std(0xd9d6cf));
@@ -104,6 +108,7 @@ export default {
     flagPanel.position.set(81, 100, -30);
     vab.add(box, flagPanel);
     g.add(plant(vab, ctx, -700, 200, 0.2));
+    solid(ctx, -700, 200, 92, 80, 160);
     // Pad lights at night.
     const padGlow = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xfff1d0, emissiveIntensity: 0 });
     for (let k = 0; k < 6; k++) {

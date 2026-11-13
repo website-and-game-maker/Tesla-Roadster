@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { fbm, ridged, smoothstep } from '../noise.js';
-import { ramp, std, plant } from './util.js';
+import { ramp, std, plant, solid } from './util.js';
 
 // World 6: Mars. Low gravity (3.71 m/s²), loose regolith, a canyon rally
 // stage past a crewed habitat. Crests send the car floating.
@@ -14,13 +14,13 @@ export default {
   gravity: 3.71,
   laps: 3,
   goldSpeed: 34,
-  unlock: 53, // total stars needed (matches the career's 4 events x 3 stars per world)
   music: 'space',
   points: [
     [0, 0, 0], [0, 250, 9], [-80, 480, 22], [-260, 600, 31], [-480, 560, 25],
     [-600, 380, 13], [-560, 160, 9], [-640, -60, 19], [-560, -300, 31], [-340, -420, 21],
     [-120, -380, 10], [40, -220, 4],
   ],
+  flight: { altitude: 20, swing: 32, waves: 4, weave: 6, ceiling: 450, goldSpeed: 62 },
   roadWidth: 16,
   runoff: 5,
   roadStyle: 'regolith',
@@ -84,6 +84,11 @@ export default {
     dish.rotation.x = -0.9;
     hab.add(mast, dish);
     g.add(plant(hab, ctx, 90, 60));
+    for (const [x, z, r] of sizes) {
+      const y = ctx.heightFn(90 + x, 60 + z);
+      ctx.collide(ctx.sphere(90 + x, y, 60 + z, r));
+    }
+    solid(ctx, 76, 50, 3.5, 3.5, 23);
     ctx.glow(shell, 0.35);
     // A landed starship-style rocket: tall steel cylinder.
     const ship = new THREE.Group();
@@ -101,6 +106,7 @@ export default {
       ship.add(leg);
     }
     g.add(plant(ship, ctx, 160, -60));
+    solid(ctx, 160, -60, 5.5, 5.5, 54);
     // Dust devil: a slowly travelling column of swirling particles.
     const n = ctx.quality.particles > 1000 ? 600 : 200;
     const pos = new Float32Array(n * 3);

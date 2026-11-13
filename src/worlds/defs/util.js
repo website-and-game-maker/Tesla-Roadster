@@ -101,3 +101,9 @@ export function plant(obj, ctx, x, z, yaw = 0, sink = 0) {
   });
   return obj;
 }
+
+// Register an axis-aligned solid block standing on the ground at (x, z).
+export function solid(ctx, x, z, hx, hz, height, y0) {
+  const y = y0 ?? ctx.heightFn(x, z);
+  ctx.collide(ctx.box(x - hx, y - 1, z - hz, x + hx, y + height, z + hz));
+}
