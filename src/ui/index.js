@@ -780,7 +780,7 @@ export function createUI(opts = {}) {
   const HOWTO_SEEN = 'roadster.howto.v1';
   const HINT_COUNT = 'roadster.hints.v1';
   function startRace(cfg) {
-    if (!store(HOWTO_SEEN) && cfg.mode !== 'multiplayer') { go('howto', { data: { pending: cfg } }); return; }
+    if (!store(HOWTO_SEEN) && cfg.mode !== 'multiplayer' && cfg.mode !== 'tutorial') { go('howto', { data: { pending: cfg } }); return; }
     sfx('click');
     raceVehicle = cfg.vehicleMode || settings.vehicleMode || 'flight';
     hud.setMode(raceVehicle);
