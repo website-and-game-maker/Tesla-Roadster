@@ -23,6 +23,10 @@
 <body>
 <div id="stats"></div>
 <div id="ui">
+  <div class="row"><span class="label">Model</span><select id="model"></select></div>
+  <div class="row"><span class="label">Flight</span><input id="flight" type="range" min="0" max="1" step="0.01" value="0">
+    <span class="label">Thrust</span><input id="thrust" type="range" min="0" max="1" step="0.01" value="0">
+    <button class="t" id="boost">Boost</button></div>
   <div class="row"><span class="label">Paint</span><span id="paints" class="row"></span></div>
   <div class="row"><span class="label"></span><span id="name"></span></div>
   <div class="row"><span class="label">Wheels</span><select id="wheels"></select>
@@ -34,7 +38,7 @@
 </div>
 <script type="module">
 import * as THREE from 'three';
-import { createRoadster, PAINTS, WHEELS } from './src/car/roadster.js';
+import { createRoadster, PAINTS, WHEELS, MODELS } from './src/car/roadster.js';
 
 const params = new URLSearchParams(location.search);
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: params.has('shot') });
@@ -81,14 +85,15 @@ sun.shadow.bias = -0.0004;
 scene.add(hemi, sun);
 
 let car;
-const ui = { paint: params.get('paint') || 'pearlWhite', wheels: params.get('wheels') || 'aeroSilver', quality: params.get('quality') || 'high', caliper: 'red' };
+const ui = { model: params.get('model') || 'rocket', paint: params.get('paint') || 'pearlWhite', wheels: params.get('wheels') || 'aeroSilver', quality: params.get('quality') || 'high', caliper: 'red' };
 function build() {
   car?.dispose();
   car = createRoadster({ ...ui });
   scene.add(car.object);
   let tris = 0;
   car.object.traverse((o) => { if (o.isMesh && o.visible) tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; });
-  stats.textContent = `${ui.quality} · ${Math.round(tris).toLocaleString()} triangles`;
+  stats.textContent = `${ui.model} · ${ui.quality} · ${Math.round(tris).toLocaleString()} triangles`;
+  applyFlight();
 }
 
 const paints = document.getElementById('paints');
@@ -103,6 +108,20 @@ const wheelsSel = document.getElementById('wheels');
 for (const w of WHEELS) wheelsSel.add(new Option(w.name, w.id));
 wheelsSel.onchange = () => { ui.wheels = wheelsSel.value; car.setWheels(ui.wheels); };
 document.getElementById('caliper').onchange = (e) => { ui.caliper = e.target.value; car.setCaliper(ui.caliper); };
+const modelSel = document.getElementById('model');
+for (const m of MODELS) modelSel.add(new Option(m.name, m.id));
+modelSel.value = ui.model;
+modelSel.onchange = () => { ui.model = modelSel.value; build(); apply(); };
+const flightIn = document.getElementById('flight'), thrustIn = document.getElementById('thrust');
+flightIn.value = params.get('flight') ?? 0;
+thrustIn.value = params.get('thrust') ?? 0;
+let boost = params.has('boost');
+function applyFlight() {
+  if (!car) return;
+  car.setFlight(+flightIn.value); car.setThrust(+thrustIn.value); car.setBoost(boost);
+}
+flightIn.oninput = thrustIn.oninput = applyFlight;
+document.getElementById('boost').onclick = (e) => { boost = !boost; e.target.classList.toggle('on', boost); applyFlight(); };
 const qSel = document.getElementById('quality');
 qSel.onchange = () => { ui.quality = qSel.value; build(); };
 function sync() {
@@ -139,6 +158,7 @@ addEventListener('wheel', (e) => { dist = Math.min(20, Math.max(3, dist * (1 + e
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
 build(); sync(); apply();
+if (params.get('ui') === '0') document.getElementById('ui').style.display = 'none';
 if (params.get('lights')) { toggles.lights = true; toggles.night = params.get('lights') === 'night'; apply(); }
 if (params.get('brake')) { toggles.brake = true; apply(); }
 

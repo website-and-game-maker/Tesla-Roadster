@@ -1,7 +1,8 @@
-// Roadster-inspired hypercar, fully procedural (no external model, no logos).
+// Roadster-inspired hypercars, fully procedural (no external model, no logos).
+// Two models: 'rocket' (default, flying) and 'classic'.
 //
-//   import { createRoadster, PAINTS, WHEELS } from './src/car/roadster.js';
-//   const car = createRoadster({ paint: 'pearlWhite', wheels: 'aeroSilver', quality: 'high' });
+//   import { createRoadster, PAINTS, WHEELS, MODELS } from './src/car/roadster.js';
+//   const car = createRoadster({ model: 'rocket', paint: 'pearlWhite', wheels: 'aeroSilver', quality: 'high' });
 //   scene.add(car.object);
 //   // every frame:
 //   car.update(dt, speedMetersPerSecond, steerRadians);
@@ -10,18 +11,26 @@
 // forward, +Y up, the driver sits on +X. quality: 'high' | 'medium' | 'low' |
 // 'auto' ('auto' builds all three into a THREE.LOD that switches by distance).
 // car.body is the sprung body group (no wheels) for roll/pitch.
-// Triangle counts (incl. wheels): high ≈ 73–88k by rim style, medium ≈ 35k, low ≈ 6k.
+// Flight (rocket model; harmless no-ops on classic):
+//   car.setFlight(0..1)  0 = road, 1 = flight (wings out, wheels tilt flat)
+//   car.setThrust(0..1)  nozzle glow and flame length
+//   car.setBoost(bool)   extra afterburn
+// Triangle counts (incl. wheels): high ≈ 75–92k by rim style, medium ≈ 36–38k, low ≈ 6–7k.
 
 import * as THREE from 'three';
-import {
-  DIM, buildBodyGeometry, buildCabin, cabinLine, headlampGeometry, tailLightPath,
-  shutLine, skinPatch, mirrorX, archPath, BODY_INFO, WELL_X,
-} from './body.js';
+import { classicShape, mirrorX, WELL_X } from './body.js';
+import { rocketShape, addRocketParts, animateRocket } from './rocket.js';
 import { buildWheel, setRimStyle } from './wheels.js';
 import {
   PAINTS, WHEELS, CALIPERS, getPaint, getWheel, createMaterials, applyPaint, applyWheelFinish,
 } from './materials.js';
 
+export const MODELS = [
+  { id: 'rocket', name: 'Rocket Roadster', flight: true },
+  { id: 'classic', name: 'Classic Roadster', flight: false },
+];
+const SHAPES = { rocket: rocketShape, classic: classicShape };
+const DIM = classicShape.DIM; // both models share the wheel layout
 export { PAINTS, WHEELS, CALIPERS, DIM };
 
 const LEVELS = {
@@ -30,12 +39,19 @@ const LEVELS = {
   low: { rings: 34, segs: 13, details: false, cabRings: 10, cabSegs: 5, tube: 3 },
 };
 const LOD_DIST = { high: 0, medium: 16, low: 45 };
+const lerp = (a, b, t) => a + (b - a) * t;
 const LEAN_PIVOT_Y = 0.45; // roughly the centre of mass height
 
 // Geometry for each quality level is identical for every car, so build once.
 const geoCache = new Map();
-function levelGeometry(q) {
-  if (geoCache.has(q)) return geoCache.get(q);
+function levelGeometry(model, q) {
+  const key = `${model}:${q}`;
+  if (geoCache.has(key)) return geoCache.get(key);
+  const shape = SHAPES[model];
+  const {
+    buildBodyGeometry, buildCabin, cabinLine, headlampGeometry, tailLightPath, shutLine, skinPatch, archPath, spec,
+  } = shape;
+  const DIM = shape.DIM;
   const L = LEVELS[q];
   const g = {};
   g.body = buildBodyGeometry({ rings: L.rings, segs: L.segs, details: L.details });
@@ -78,10 +94,12 @@ function levelGeometry(q) {
 
   if (q !== 'low') {
     // Window frame / targa edges.
-    g.frames = both(tube(cabinLine(0.6, -1.0, 0.76, 30), 0.011, 50));
+    g.frames = both(tube(cabinLine(spec.frame[0], spec.frame[1], spec.frame[2], 30), 0.011, 50));
     // Spoiler: thin painted blade over the rear deck.
-    const sp = skinPatch(-2.03, -1.83, q === 'high' ? 10 : 5, (t, v) => 1.0 + v * (Math.PI / 2 - 1.0), q === 'high' ? 10 : 5, 0.004);
-    g.spoiler = both(white(sp));
+    if (spec.spoiler) {
+      const sp = skinPatch(spec.spoiler[0], spec.spoiler[1], q === 'high' ? 10 : 5, (t, v) => 1.0 + v * (Math.PI / 2 - 1.0), q === 'high' ? 10 : 5, 0.004);
+      g.spoiler = both(white(sp));
+    }
     g.bezel = both(headlampGeometry(q === 'high' ? 18 : 8, 2, 0.012));
     // Mirrors.
     const cap = new THREE.SphereGeometry(0.075, q === 'high' ? 20 : 10, q === 'high' ? 12 : 6);
@@ -90,22 +108,19 @@ function levelGeometry(q) {
     g.mirrorStalk = new THREE.BoxGeometry(0.11, 0.018, 0.04);
     // Interior.
     g.seatBase = new THREE.BoxGeometry(0.48, 0.12, 0.5);
-    g.seatBack = new THREE.BoxGeometry(0.48, 0.5, 0.12);
-    g.headrest = new THREE.BoxGeometry(0.26, 0.16, 0.1);
+    // Rounded shell backrest with an integrated headrest.
+    g.seatBack = new THREE.CapsuleGeometry(0.2, 0.26, 4, q === 'high' ? 14 : 8).scale(1.15, 1, 0.3);
+    g.headrest = new THREE.CapsuleGeometry(0.1, 0.04, 3, q === 'high' ? 12 : 6).scale(1.2, 1, 0.5);
     g.dash = new THREE.BoxGeometry(1.24, 0.12, 0.3);
     g.wheel = new THREE.TorusGeometry(0.165, 0.017, 8, q === 'high' ? 32 : 16);
     g.screen = new THREE.BoxGeometry(0.34, 0.2, 0.015);
     g.fin = new THREE.BoxGeometry(0.012, 0.09, 0.32);
     if (q === 'high') {
-      g.shut = [
-        ...both(tube(shutLine(0.50, -0.5, 0.62), 0.0022, 24)),
-        ...both(tube(shutLine(-0.45, -0.5, 0.75), 0.0022, 24)),
-        ...both(tube(shutLine(1.62, 0.85, Math.PI / 2), 0.0022, 16)),
-      ];
+      g.shut = spec.shut.flatMap(([z, a, b]) => both(tube(shutLine(z, a, b), 0.0022, 24)));
     }
   }
   g.shadow = new THREE.PlaneGeometry(2.5, 5.0).rotateX(-Math.PI / 2);
-  geoCache.set(q, g);
+  geoCache.set(key, g);
   return g;
 }
 
@@ -116,12 +131,14 @@ function mesh(geo, mat, shadow = true) {
 }
 
 /** Builds one detail level of the car. */
-function buildLevel(q, mats, wheelSpec) {
-  const g = levelGeometry(q);
+function buildLevel(model, q, mats, wheelSpec) {
+  const g = levelGeometry(model, q);
+  const shape = SHAPES[model];
+  const DIM = shape.DIM;
   // level → lean (pivot near the centre of mass) → root (all sprung parts).
   // Wheels hang off `level` directly so body roll/pitch doesn't move them.
   const level = new THREE.Group();
-  level.name = `roadster-${q}`;
+  level.name = `roadster-${model}-${q}`;
   const lean = new THREE.Group();
   lean.name = 'body';
   lean.position.y = LEAN_PIVOT_Y;
@@ -134,7 +151,7 @@ function buildLevel(q, mats, wheelSpec) {
   const glass = mesh(g.glass, mats.glass, false);
   glass.renderOrder = 2;
   root.add(glass);
-  root.add(mesh(g.roof, mats.gloss));
+  if (g.roof) root.add(mesh(g.roof, mats.gloss));
   g.lamp.forEach((l) => root.add(mesh(l, mats.headlight, false)));
   root.add(mesh(g.tail, mats.taillight, false));
   g.lips.forEach((l) => root.add(mesh(l, mats.paint)));
@@ -153,7 +170,7 @@ function buildLevel(q, mats, wheelSpec) {
   // Reverse lights low on the tail.
   for (const s of [1, -1]) {
     const r = mesh(new THREE.BoxGeometry(0.14, 0.025, 0.01), mats.reverse, false);
-    r.position.set(0.32 * s, 0.36, BODY_INFO.Z_MIN + 0.03);
+    r.position.set(0.32 * s, model === 'rocket' ? 0.3 : 0.36, shape.Z_MIN + 0.03);
     root.add(r);
   }
 
@@ -163,14 +180,17 @@ function buildLevel(q, mats, wheelSpec) {
     g.bezel.forEach((b) => root.add(mesh(b, mats.bezel, false)));
     (g.shut || []).forEach((s) => root.add(mesh(s, mats.trim, false)));
 
-    spoiler = new THREE.Group();
-    spoiler.position.set(0, 0, -1.83); // hinge at the front edge of the blade
-    g.spoiler.forEach((s) => {
-      const m = mesh(s, mats.paint);
-      m.position.z = 1.83;
-      spoiler.add(m);
-    });
-    root.add(spoiler);
+    if (g.spoiler) {
+      const hz = shape.spec.spoiler[1];
+      spoiler = new THREE.Group();
+      spoiler.position.set(0, 0, hz); // hinge at the front edge of the blade
+      g.spoiler.forEach((s) => {
+        const m = mesh(s, mats.paint);
+        m.position.z = -hz;
+        spoiler.add(m);
+      });
+      root.add(spoiler);
+    }
 
     for (const s of [1, -1]) {
       const cap = mesh(g.mirror, mats.paint);
@@ -183,22 +203,22 @@ function buildLevel(q, mats, wheelSpec) {
     }
 
     // Diffuser fins.
-    for (let i = -2; i <= 2; i++) {
+    for (let i = -2; i <= (shape.spec.fins ? 2 : -3); i++) {
       const f = mesh(g.fin, mats.trim);
       f.position.set(i * 0.22, 0.24, -2.0);
       root.add(f);
     }
 
     // Cockpit: two sport seats, dash, centre screen and steering wheel (LHD, +X).
-    const floor = BODY_INFO.COCKPIT.floor;
+    const floor = shape.COCKPIT.floor;
     for (const s of [1, -1]) {
       const base = mesh(g.seatBase, mats.seat);
       base.position.set(0.34 * s, floor + 0.08, -0.25);
       const back = mesh(g.seatBack, mats.seat);
-      back.position.set(0.34 * s, floor + 0.32, -0.52);
+      back.position.set(0.34 * s, floor + 0.3, -0.5);
       back.rotation.x = -0.22;
       const head = mesh(g.headrest, mats.interior);
-      head.position.set(0.34 * s, floor + 0.62, -0.58);
+      head.position.set(0.34 * s, floor + 0.54, -0.56);
       head.rotation.x = -0.22;
       root.add(base, back, head);
     }
@@ -217,15 +237,18 @@ function buildLevel(q, mats, wheelSpec) {
   for (const axle of [DIM.front, DIM.rear]) {
     for (const side of [1, -1]) {
       const w = buildWheel(axle, side, wheelSpec, mats, q);
+      w.base = w.pivot.position.clone();
       level.add(w.pivot);
       wheels.push(w);
     }
   }
-  return { root: level, lean, wheels, spoiler, q };
+  const rocket = model === 'rocket' ? addRocketParts(root, q, mats, wheels) : null;
+  return { root: level, lean, wheels, spoiler, rocket, q };
 }
 
 /**
  * Creates a car. Options:
+ *   model     'rocket' | 'classic'  (default 'rocket')
  *   paint     PAINTS id            (default 'pearlWhite')
  *   wheels    WHEELS id            (default 'aeroSilver')
  *   caliper   'red'|'black'|'yellow'|'blue'
@@ -235,6 +258,7 @@ function buildLevel(q, mats, wheelSpec) {
  */
 export function createRoadster(opts = {}) {
   const quality = opts.quality || 'high';
+  const model = SHAPES[opts.model] ? opts.model : 'rocket';
   let paintId = getPaint(opts.paint).id;
   let wheelId = getWheel(opts.wheels).id;
   const matQ = quality === 'auto' ? 'high' : quality;
@@ -250,14 +274,14 @@ export function createRoadster(opts = {}) {
     object.add(lod);
   }
   for (const q of qs) {
-    const lvl = buildLevel(q, mats, getWheel(wheelId));
+    const lvl = buildLevel(model, q, mats, getWheel(wheelId));
     levels.push(lvl);
     if (lod) lod.addLevel(lvl.root, LOD_DIST[q]);
     else object.add(lvl.root);
   }
 
   if (opts.contactShadow !== false) {
-    const blob = new THREE.Mesh(levelGeometry(qs[qs.length - 1]).shadow, mats.shadow);
+    const blob = new THREE.Mesh(levelGeometry(model, qs[qs.length - 1]).shadow, mats.shadow);
     blob.position.y = 0.012;
     blob.renderOrder = -1;
     object.add(blob);
@@ -275,7 +299,10 @@ export function createRoadster(opts = {}) {
     }
   }
 
-  const state = { steer: 0, spinF: 0, spinR: 0, brake: false, lights: false, reverse: false, spoiler: 0, spoilerTarget: null };
+  const state = {
+    steer: 0, spinF: 0, spinR: 0, brake: false, lights: false, reverse: false, spoiler: 0, spoilerTarget: null,
+    flight: 0, thrust: 0, boost: false, time: 0,
+  };
 
   function forWheels(fn) { for (const l of levels) for (const w of l.wheels) fn(w); }
 
@@ -286,9 +313,10 @@ export function createRoadster(opts = {}) {
 
   const car = {
     object,
+    model,
     /** Sprung body (no wheels), pivot ~centre of mass: lean it via rotation.x/z, bounce via position.y. */
     body,
-    dimensions: DIM,
+    dimensions: SHAPES[model].DIM,
     get paint() { return paintId; },
     get wheels() { return wheelId; },
     /** Wheel contact points in car space (FL, FR, RL, RR) for physics. */
@@ -325,6 +353,26 @@ export function createRoadster(opts = {}) {
       for (const b of beams) b.intensity = on ? 120 : 0;
     },
     setReverse(on) { state.reverse = !!on; mats.reverse.emissiveIntensity = on ? 3 : 0; },
+    /** 0 = road, 1 = flight. Animates wings, canards and wheel tilt (rocket). */
+    setFlight(v) { state.flight = Math.min(1, Math.max(0, +v || 0)); car.refreshFlight(); },
+    /** 0..1: nozzle glow and flame length. */
+    setThrust(v) { state.thrust = Math.min(1, Math.max(0, +v || 0)); car.refreshFlight(); },
+    /** Extra afterburn on top of thrust. */
+    setBoost(on) {
+      state.boost = !!on;
+      mats.flameOuter.color.setHex(on ? 0xc070ff : 0x3a9cff);
+      car.refreshFlight();
+    },
+    get flight() { return state.flight; },
+    refreshFlight() {
+      const glow = 0.4 + state.thrust * 5 + (state.boost ? 6 : 0);
+      mats.thrusterGlow.emissiveIntensity = glow;
+      mats.flameOuter.opacity = Math.min(1, 0.25 + state.thrust * 0.45 + (state.boost ? 0.3 : 0));
+      mats.flameCore.opacity = Math.min(1, 0.4 + state.thrust * 0.5);
+      for (const l of levels) {
+        if (l.rocket) animateRocket(l.rocket, l.wheels, state.flight, state.thrust, state.boost, state.time);
+      }
+    },
     /** 0 = stowed, 1 = fully raised. Pass null to go back to automatic. */
     setSpoiler(v) { state.spoilerTarget = v; },
     /** Force a detail level when built with quality 'auto'. */
@@ -340,10 +388,16 @@ export function createRoadster(opts = {}) {
         for (const l of levels) { l.lean.position.copy(body.position); l.lean.quaternion.copy(body.quaternion); }
       }
       if (steer !== state.steer) car.setSteer(steer);
-      const f = state.spinF + (speed / DIM.front.r) * dt;
-      const r = state.spinR + (speed / DIM.rear.r) * dt;
+      state.time += dt;
+      // On the road the wheels roll with speed; tilted for flight they spin
+      // like turbines with thrust.
+      const fl = state.flight;
+      const turbine = (6 + 40 * state.thrust + (state.boost ? 30 : 0)) * dt;
+      const f = state.spinF + lerp((speed / DIM.front.r) * dt, turbine, fl);
+      const r = state.spinR + lerp((speed / DIM.rear.r) * dt, turbine, fl);
       car.setWheelSpin(f % (Math.PI * 2), r % (Math.PI * 2));
       // Spoiler rises at speed and acts as an air brake under hard braking.
+      if (model === 'rocket') car.refreshFlight();
       const auto = speed > 22 || (state.brake && speed > 15) ? 1 : 0;
       const target = state.spoilerTarget ?? auto;
       state.spoiler += (target - state.spoiler) * Math.min(1, dt * 4);
@@ -360,9 +414,11 @@ export function createRoadster(opts = {}) {
       object.removeFromParent();
       // Material.dispose() leaves textures alone, and those are shared/cached.
       for (const m of Object.values(mats)) m.dispose();
+      for (const l of levels) if (l.rocket) for (const p of l.rocket.lights) p.dispose();
     },
   };
   car.setHeadlights(!!opts.headlights);
   car.setBrake(false);
+  car.setBoost(false);
   return car;
 }
