@@ -1,9 +1,14 @@
 /**
  * Drives three.js objects for remote players.
  *
- *   const remote = new RemoteCars({ THREE, scene, createCarMesh: (color, carId) => createRoadster({ color }) });
+ *   const remote = new RemoteCars({ THREE, scene, createCarMesh: (color, carId) => createRoadster({ paint }) });
  *   // each render frame:
- *   remote.update(mp.getRemoteCars(), camera);
+ *   remote.update(mp.getRemoteCars(), camera, dt);
+ *
+ * createCarMesh may return a THREE.Object3D or a car-team model
+ * ({ object, update, setFlight, setThrust, setBrake, setHeadlights }). With a
+ * model, remotes also get spinning wheels, brake/head lights and, in flight,
+ * the flight pose and thruster glow.
  *
  * Remote cars are rendered as solid cars with a floating name tag. Cars
  * whose data went stale (lag spike / disconnect) fade to a translucent ghost
@@ -19,7 +24,7 @@ export class RemoteCars {
     this.cars = new Map(); // id -> { root, mesh, tag, color, carId, opacity }
   }
 
-  update(remoteCars, camera) {
+  update(remoteCars, camera, dt = 1 / 60) {
     const seen = new Set();
     for (const rc of remoteCars) {
       seen.add(rc.id);
@@ -31,6 +36,7 @@ export class RemoteCars {
       entry.root.position.set(rc.p[0], rc.p[1], rc.p[2]);
       entry.root.quaternion.set(rc.q[0], rc.q[1], rc.q[2], rc.q[3]);
       entry.root.userData.remote = rc; // lets the game read speed/steer/fx for wheels, lights, smoke
+      this._animate(entry, rc, dt);
 
       const target = rc.stale ? 0.35 : 1;
       entry.opacity += (target - entry.opacity) * 0.15;
@@ -62,9 +68,11 @@ export class RemoteCars {
     const { THREE } = this;
     const root = new THREE.Group();
     root.name = `remote-${rc.id}`;
-    const mesh = this.createCarMesh(rc.color, rc.carId);
+    const made = this.createCarMesh(rc.color, rc.carId);
+    const model = made && !made.isObject3D && made.object ? made : null;
+    const mesh = model ? model.object : made;
     root.add(mesh);
-    const entry = { root, mesh, tag: null, color: rc.color, carId: rc.carId, opacity: 1, materials: [] };
+    const entry = { root, mesh, model, flight: null, tag: null, color: rc.color, carId: rc.carId, opacity: 1, materials: [] };
     mesh.traverse((o) => {
       if (!o.material) return;
       // Clone so fading this car doesn't fade the shared player material.
@@ -91,6 +99,22 @@ export class RemoteCars {
     this.scene.add(root);
     this.cars.set(rc.id, entry);
     return entry;
+  }
+
+  /** Drive the car model's own animation hooks from the network state. */
+  _animate(entry, rc, dt) {
+    const m = entry.model;
+    if (!m) return;
+    const flying = rc.mode === 'flight' ? 1 : 0;
+    if (flying !== entry.flight) {
+      entry.flight = flying;
+      m.setFlight?.(flying);
+    }
+    if (flying) m.setThrust?.(rc.thrust || 0);
+    const fx = rc.fx | 0;
+    m.setBrake?.(!!(fx & 1));
+    m.setHeadlights?.(!!(fx & 8));
+    m.update?.(dt, rc.speed || 0, -(rc.steer || 0)); // car API: +rad steers left
   }
 
   _drawTag(entry, rc) {
@@ -128,6 +152,7 @@ export class RemoteCars {
     if (!e) return;
     this.scene.remove(e.root);
     for (const m of e.materials) m.dispose();
+    e.model?.dispose?.();
     if (e.tag) {
       e.tag.material.map.dispose();
       e.tag.material.dispose();

@@ -20,11 +20,14 @@ export const DEFAULTS = {
   sfxVol: 0.9,
   controls: 'auto',         // 'auto' | 'keyboard' | 'touch' | 'gamepad'
   tiltSteer: false,
+  invertPitch: false,
   steerSensitivity: 1,
   units: 'kmh',             // 'kmh' | 'mph'
   camera: 'chase',          // 'chase' | 'hood' | 'cinematic'
   haptics: true,
   playerName: '',
+  vehicleMode: 'flight',    // 'flight' | 'ground'
+  tutorialSeen: false,
   car: { color: 'pearl', wheels: 'turbine', interior: 'black' },
 };
 

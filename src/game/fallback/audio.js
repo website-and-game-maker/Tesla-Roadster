@@ -71,7 +71,7 @@ export class AudioEngine {
 
   ui(name) {
     const map = { click: [660, 0.05], hover: [880, 0.03, 'sine', 0.05], confirm: [990, 0.12, 'triangle', 0.15, 400], back: [440, 0.08, 'triangle', 0.12, -150],
-      countdown: [520, 0.18, 'sine', 0.25], go: [1040, 0.5, 'sine', 0.3], lap: [784, 0.25, 'triangle', 0.2, 200], unlock: [660, 0.4, 'triangle', 0.2, 660] };
+      countdown: [520, 0.18, 'sine', 0.25], go: [1040, 0.5, 'sine', 0.3], lap: [784, 0.25, 'triangle', 0.2, 200], ring: [1175, 0.18, 'sine', 0.22, 500], transform: [300, 0.4, 'sawtooth', 0.08, 500], unlock: [660, 0.4, 'triangle', 0.2, 660] };
     const m = map[name]; if (m) this._blip(...m);
   }
 }

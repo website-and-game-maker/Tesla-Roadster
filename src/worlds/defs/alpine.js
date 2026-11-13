@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { fbm, ridged, smoothstep } from '../noise.js';
-import { ramp, std, plant } from './util.js';
+import { ramp, std, plant, solid } from './util.js';
 
 // World 4: a mountain pass. Hairpin switchbacks climb 110 m to a summit
 // road with views over glaciers, then a fast descent back to the valley.
@@ -14,7 +14,6 @@ export default {
   gravity: 9.81,
   laps: 2,
   goldSpeed: 30,
-  unlock: 27, // total stars needed (matches the career's 4 events x 3 stars per world)
   music: 'epic',
   points: [
     [0, 0, 0], [0, 150, 8], [0, 290, 19], [15, 365, 24], [60, 398, 27], [105, 365, 30],
@@ -23,6 +22,8 @@ export default {
     [270, 785, 106], [80, 765, 96], [-80, 700, 84], [-200, 580, 70], [-240, 420, 56], [-230, 250, 40],
     [-200, 80, 24], [-170, -80, 12], [-90, -175, 4], [0, -130, 0],
   ],
+  // The flight course dives under the stone arch near the summit (u = 0.62).
+  flight: { altitude: 26, swing: 34, waves: 3, weave: 4, ceiling: 500, goldSpeed: 62, keys: [{ u: 0.62, alt: 7, lat: 0, radius: 5.5, width: 0.012 }] },
   roadWidth: 14,
   runoff: 3,
   roadStyle: 'mountain',
@@ -77,6 +78,7 @@ export default {
     flag.position.set(10.3, 9.1, 0);
     hut.add(walls, roof, pole, flag);
     g.add(plant(hut, ctx, 470, 700, -0.6));
+    solid(ctx, 470, 700, 9, 9, 10);
     const base = flag.geometry.attributes.position.array.slice();
     ctx.onUpdate((dt, night, t) => {
       const p = flag.geometry.attributes.position;
@@ -92,13 +94,22 @@ export default {
     const y = ctx.track.pos[i * 3 + 1];
     const z = ctx.track.pos[i * 3 + 2];
     const arch = new THREE.Mesh(
-      new THREE.TorusGeometry(ctx.track.wallHalfWidth + 2, 2.2, 6, 16, Math.PI),
+      new THREE.TorusGeometry(ctx.track.wallHalfWidth + 6, 2.2, 6, 16, Math.PI),
       std(0x6a6560, { flatShading: true }),
     );
     arch.position.set(x, y, z);
     arch.rotation.y = Math.atan2(ctx.track.fwd[i * 3], ctx.track.fwd[i * 3 + 2]);
     arch.castShadow = ctx.quality.shadows;
     g.add(arch);
+    ctx.gate(x, y + 7, z, 5.5);
+    // Solid stone: a chain of spheres along the arch.
+    const R = ctx.track.wallHalfWidth + 6;
+    const h = arch.rotation.y;
+    for (let a = 0; a <= Math.PI + 1e-6; a += Math.PI / 14) {
+      const lx = Math.cos(a) * R;
+      const ly = Math.sin(a) * R;
+      ctx.collide(ctx.sphere(x + Math.cos(h) * lx, y + ly, z - Math.sin(h) * lx, 2.4));
+    }
     return g;
   },
 };

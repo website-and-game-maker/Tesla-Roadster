@@ -73,3 +73,11 @@ mp.hostRoom({ trackId, laps }); mp.joinRoom(code); mp.quickMatch()
 mp.sendState({ pos, quat, vel, speed, steer, lap, progress })  // progress 0..1 along lap
 mp.getRemoteCars(); events 'lobby','countdown','positions','results'
 ```
+
+## Flight (the main game)
+
+- `src/physics/flight.js`: `Flyer` (player flight model: thrust, lift, drag, bank-to-turn, VTOL hover, crash rules) and `AIFlyer` (kinematic pilots that follow the course with speed planning). With assist on, the stick sets the bank angle and letting go levels the wings.
+- `src/game/flightCourse.js`: samples a world's `flightCurve` (or lifts a ground track into the sky) and handles ring crossing.
+- `src/game/flightRace.js`: ring races, ring trials, free flight and the tutorial. Same shape as `Race` (`build`, `update`, `hudData`, `endRace`, `dispose`). With assist on, `ringAssist` gently pulls a lined-up flight path through the ring centre.
+- Online: `FlightRace.onlineSpawn(slot)` places the car on the grid; `FlightRace.onlineState()` is what gets streamed. Rooms carry `settings.vehicleMode` ('flight' by default).
+- `src/game/accounts.js`: UI `auth` events to Supabase auth and cloud saves; keeps whichever save has more progress on sign-in. Without keys in `src/multiplayer/config.js` the game stays local-only.

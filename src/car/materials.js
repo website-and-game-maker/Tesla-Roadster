@@ -157,6 +157,14 @@ export function createMaterials(quality, paintId, wheelId, caliper = 'red') {
     bezel: new THREE.MeshStandardMaterial({ color: 0x0d0e10, metalness: 0.8, roughness: 0.25 }),
     taillight: new THREE.MeshStandardMaterial({ color: 0x400000, emissive: 0xff1418, emissiveIntensity: 0.9, roughness: 0.2 }),
     reverse: new THREE.MeshStandardMaterial({ color: 0x888888, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.2 }),
+    // Flight hardware (rocket model).
+    thrusterGlow: new THREE.MeshStandardMaterial({ color: 0x0a1a24, emissive: 0x5cd0ff, emissiveIntensity: 0.4, roughness: 0.3 }),
+    flameOuter: new THREE.MeshBasicMaterial({
+      color: 0x3a9cff, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+    }),
+    flameCore: new THREE.MeshBasicMaterial({
+      color: 0xe8f6ff, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+    }),
     shadow: new THREE.MeshBasicMaterial({ map: contactShadowTexture(), transparent: true, depthWrite: false, opacity: 0.85 }),
   };
   return m;

@@ -6,7 +6,7 @@ Everything lives in `src/multiplayer/`. It's plain ES modules with no build step
 
 GitHub Pages can only serve static files, so there's no game server. Instead:
 
-1. **Matchmaking** goes through the free public [PeerJS](https://peerjs.com) broker. It only introduces two browsers (it swaps WebRTC connection offers). It needs no account and no key.
+1. **Matchmaking** goes through the free public [PeerJS](https://peerjs.com) broker. It only introduces two browsers (it swaps WebRTC connection offers). It needs no account and no key. The PeerJS library itself is bundled in `vendor/peerjs.module.js` (licenses in `vendor/PEERJS-LICENSE`), so the game loads no scripts from a CDN. The broker connection is the only outside request.
 2. **Race traffic** then flows directly between browsers over WebRTC data channels. The room's host relays car states to everyone (star topology: 7 connections for 8 players, not 28).
 3. **Physics stay local.** Each player simulates their own car. Remote cars are drawn 100 ms in the past and blended with a Hermite curve that matches both position and velocity, so they stay smooth at 200+ km/h. They extrapolate for at most 250 ms when packets drop, then fade to a translucent ghost.
 4. **One shared clock.** Guests estimate the host's clock from pings (using the fastest third of 16 samples), so everyone's lights go green at the same instant and race times compare fairly.
@@ -64,13 +64,68 @@ Events: `lobby`, `countdown`, `race-start`, `positions`, `lap`, `grace`, `result
 
 `multiplayer-demo.html` is a top-down test bench that runs the full stack without the 3D game. Open it in two tabs.
 
-## Turning on global leaderboards (optional, free, about 5 minutes)
+## Flight mode
 
-1. Sign up at https://supabase.com and create a project (the free tier is fine).
-2. Go to **SQL Editor**, then **New query**, paste `supabase/schema.sql`, and click **Run**.
-3. Go to **Project Settings**, then **API**, and copy the **Project URL** and the **anon public** key into `src/multiplayer/config.js` under `supabase`.
+Flight races use the same rooms. The Race hands its state to the network through an optional hook:
 
-The anon key is meant to be public. The SQL only allows inserting valid lap times (5 s to 1 h, names of 1–16 characters, max 30 per player per 10 minutes) and reading them. Nobody can edit or delete rows.
+```js
+race.onlineState = () => ({
+  mode: 'flight', pos: [x, y, z], quat: [qx, qy, qz, qw], vel: [vx, vy, vz],
+  speed, thrust /* 0..1 */, ringIndex, lap, progress /* 0..1 along the course */, fx,
+});
+```
+
+`OnlineRace` sends this instead of the driving state when it exists. Remote cars get the full 3D rotation, position blended in 3D (climbs and dives stay smooth), and `model.setFlight(1)` / `model.setThrust(t)` on the car team's model, which is called only when the model has those methods. They switch back with `setFlight(0)` when the player lands. Race order still comes from `lap` + `progress`.
+
+Flight time attack leaderboards are per course: `mp.leaderboard.submit({ courseId, lapMs, name, mode: 'flight' })` and `mp.leaderboard.top(courseId)`.
+
+## Accounts & cloud saves
+
+```js
+import { auth, cloud } from './src/multiplayer/index.js';
+auth.enabled                                   // false until Supabase keys are set
+auth.onChange((user) => menu.setUser(user));   // { id, email, isAnonymous } | null, called now and on change
+await auth.signUp(email, pw);                  // -> { user, needsConfirmation }
+await auth.signIn(email, pw);
+await auth.signInAsGuest();                    // no email; saves still sync
+await auth.upgrade(email, pw);                 // guest -> full account, same saves
+await auth.signOut();
+const saved = await cloud.loadProfile();       // JSON | null
+await cloud.saveProfile(profileJson);          // coalesced to at most one upload every 3 s
+```
+
+With no keys configured, everything stays local-only: sign-in calls reject with "Online accounts are not set up", `loadProfile()` returns null and `saveProfile()` resolves `{ saved: false }`. Errors come back as plain sentences, for example "Wrong email or password." Sessions persist across reloads and refresh themselves.
+
+Suggested merge on sign-in: if the cloud save exists, use whichever save has more progress (or the newer one), then `saveProfile` the result.
+
+## SETUP: accounts, cloud saves and global leaderboards (free, about 10 minutes)
+
+You only need to do this once. Everything stays on Supabase's free plan.
+
+1. Go to https://supabase.com, click **Start your project**, and sign in with GitHub.
+2. Click **New project**. Pick any name (for example `roadster`), make up a database password (you won't need it in the game), choose the region closest to you, and click **Create new project**. Wait about a minute while it sets up.
+3. In the left sidebar, open **SQL Editor** and click **New query**. Open `supabase/schema.sql` from this repo, copy all of it, paste it in, and click **Run**. You should see "Success. No rows returned". It's safe to run again later.
+4. In the left sidebar, open **Authentication**, then **Sign In / Providers** (on older dashboards it's **Providers**):
+   - **Email** should already be on. For instant sign-up with no confirmation email, turn **Confirm email** off and save.
+   - Turn on **Allow anonymous sign-ins** and save. This enables guest accounts.
+5. Still under **Authentication**, open **URL Configuration** and set **Site URL** to your game's address, for example `https://website-and-game-maker.github.io/Tesla-Roadster/`.
+6. Open **Project Settings**, then **API** (or **Data API** and **API Keys**). Copy the **Project URL** and the **anon public** key.
+7. Paste both into `src/multiplayer/config.js`:
+   ```js
+   supabase: {
+     url: 'https://abcdefgh.supabase.co',
+     anonKey: 'eyJhbGciOi...',
+   },
+   ```
+   Commit and push. GitHub Pages picks it up within a minute.
+
+Is it safe to put the anon key in a public repo? Yes. It is designed to be public, and the database rules in `schema.sql` do the protecting:
+- Players can read and write only their own save row.
+- Lap times can only be added (5 s to 1 h, names of 1–16 characters, max 30 per player per 10 minutes) and read. Nobody can edit or delete them.
+
+Never paste the **service_role** key anywhere in the game.
+
+Free plan limits that matter here: 50,000 monthly active users, a 500 MB database, and projects pause after a week with no activity. Opening the game wakes it, but the first request can take a few seconds.
 
 Note: lap times are reported by the player's browser, so a determined cheater could fake one. If the game becomes popular, the next step is a Supabase Edge Function that checks a recorded ghost replay before accepting a time.
 

@@ -2,6 +2,9 @@
 // drag-to-orbit, reflective floor, and live paint/wheel swaps.
 import { DEFAULT_PAINTS, DEFAULT_WHEELS } from './catalog.js';
 
+// setPointerCapture can throw (e.g. pointer already released); capture is best-effort.
+const capture = (el, id) => { try { el.setPointerCapture(id); } catch { /* ignore */ } };
+
 export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_PAINTS, wheels = DEFAULT_WHEELS, getQuality } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, getQuality?.() === 'low' ? 1 : 2));
@@ -59,7 +62,13 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
     garage: { dist: 7.2, h: 1.4, look: [0, 0.5, 0], spin: 0.0 },
     detail: { dist: 4.6, h: 0.7, look: [0, 0.4, 0], spin: 0.0 },
   };
-  let shot = shots.menu, camYaw = 0.9, camYawVel = 0, camH = shot.h, camDist = shot.dist;
+  // Orbit camera: yaw/pitch/distance follow targets. Each shot sets defaults; user input
+  // (drag, pinch, wheel) overrides them until the next shot change.
+  const PITCH_MIN = 0.03, PITCH_MAX = 1.05, DIST_MIN = 3.6, DIST_MAX = 14;
+  const shotPitch = (sh) => Math.atan2(sh.h - sh.look[1], sh.dist);
+  let shot = shots.menu, camYaw = 0.9, camYawVel = 0, camPitchVel = 0;
+  let camPitch = shotPitch(shot), camDist = shot.dist;
+  let tgtPitch = camPitch, tgtDist = camDist, userControlled = false, idleT = 0;
   const look = new THREE.Vector3(...shot.look), lookTarget = look.clone();
 
   // Car
@@ -100,13 +109,44 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
     makeCar();
   }
 
-  // Drag to orbit (garage), with inertia
-  let dragging = false, lastX = 0;
-  canvas.addEventListener('pointerdown', (e) => { dragging = true; lastX = e.clientX; canvas.setPointerCapture(e.pointerId); });
-  canvas.addEventListener('pointermove', (e) => { if (!dragging) return; camYawVel = -(e.clientX - lastX) * 0.006; camYaw += camYawVel; lastX = e.clientX; });
-  const up = () => { dragging = false; };
+  // Orbit with mouse or one finger, pinch or wheel to zoom, with inertia on release.
+  const pointers = new Map();
+  let pinchD = 0;
+  const pinchDist = () => { const [a, b] = [...pointers.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  let dragging = false;
+  canvas.addEventListener('pointerdown', (e) => {
+    capture(canvas, e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    dragging = true; userControlled = true; idleT = 0; camYawVel = 0; camPitchVel = 0;
+    if (pointers.size === 2) pinchD = pinchDist();
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    const p = pointers.get(e.pointerId); if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (pointers.size === 1) {
+      // Scale by viewport so a full-width drag is about one full turn on any screen size.
+      const k = (Math.PI * 2) / Math.max(400, canvas.clientWidth || innerWidth);
+      camYawVel = -dx * k; camPitchVel = dy * k;
+      camYaw += camYawVel;
+      tgtPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, tgtPitch + camPitchVel));
+      camPitch = tgtPitch;
+    } else if (pointers.size === 2) {
+      const d = pinchDist();
+      if (pinchD > 0) tgtDist = Math.max(DIST_MIN, Math.min(DIST_MAX, tgtDist * (pinchD / d)));
+      pinchD = d;
+    }
+  });
+  const up = (e) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinchD = 0;
+    if (pointers.size === 0) dragging = false;
+  };
   canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
-  canvas.addEventListener('wheel', (e) => { camDist = Math.max(4.2, Math.min(12, camDist + e.deltaY * 0.004)); }, { passive: true });
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault(); userControlled = true; idleT = 0;
+    tgtDist = Math.max(DIST_MIN, Math.min(DIST_MAX, tgtDist * Math.exp(e.deltaY * 0.0015)));
+  }, { passive: false });
 
   function resize() {
     const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight;
@@ -123,14 +163,24 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
     if (!running) return;
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - t0) / 1000); t0 = now;
-    if (!dragging) { camYawVel *= Math.pow(0.04, dt); camYaw += camYawVel + shot.spin * dt; }
-    camH += (shot.h - camH) * Math.min(1, dt * 3);
-    camDist += (shot.dist - camDist) * Math.min(1, dt * (dragging ? 0 : 1.5));
+    if (!dragging) {
+      // Inertia: velocities decay smoothly after release.
+      const decay = Math.pow(0.02, dt);
+      camYawVel *= decay; camPitchVel *= decay;
+      camYaw += camYawVel;
+      tgtPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, tgtPitch + camPitchVel));
+      idleT += dt;
+      // Resume the slow showroom spin a few seconds after the user lets go.
+      camYaw += shot.spin * dt * (userControlled ? Math.min(1, Math.max(0, idleT - 4)) : 1);
+    }
+    camPitch += (tgtPitch - camPitch) * Math.min(1, dt * 10);
+    camDist += (tgtDist - camDist) * Math.min(1, dt * 8);
     lookTarget.set(...shot.look);
     // Center the car on narrow screens since menu panels stack below.
     if (camera.aspect < 1) lookTarget.x = 0;
     look.lerp(lookTarget, Math.min(1, dt * 3));
-    camera.position.set(look.x + Math.sin(camYaw) * camDist, camH, look.z + Math.cos(camYaw) * camDist);
+    const horiz = Math.cos(camPitch) * camDist;
+    camera.position.set(look.x + Math.sin(camYaw) * horiz, look.y + Math.sin(camPitch) * camDist, look.z + Math.cos(camYaw) * horiz);
     camera.lookAt(look);
     ring.material.color.setHSL(0.58, 1, 0.55 + Math.sin(now / 600) * 0.08);
     if (handle?.update) handle.update(dt, 0, 0); else car?.userData?.update?.(dt);
@@ -143,7 +193,12 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
   return {
     scene, camera, renderer,
     get car() { return car; },
-    setShot(name) { shot = shots[name] || shots.menu; },
+    setShot(name) {
+      const next = shots[name] || shots.menu;
+      if (next === shot) return;
+      shot = next; userControlled = false; idleT = 0;
+      tgtPitch = shotPitch(shot); tgtDist = shot.dist;
+    },
     setCar({ paint, wheels: wh } = {}) {
       const pc = paint && paint !== carSpec.paint, wc = wh && wh !== carSpec.wheels;
       if (paint) carSpec.paint = paint; if (wh) carSpec.wheels = wh;

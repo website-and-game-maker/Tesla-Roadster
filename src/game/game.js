@@ -7,9 +7,11 @@ import { Input } from '../core/input.js';
 import { QualityManager } from '../core/quality.js';
 import { carStats } from '../physics/vehicle.js';
 import { loadModules } from './registry.js';
-import { buildCareer, totalStars, starsFor, EVENT_TYPES, UPGRADE_COST, MAX_UPGRADE } from './career.js';
+import { buildCareer, buildFlightCareer, totalStars, starsFor, EVENT_TYPES, UPGRADE_COST, MAX_UPGRADE } from './career.js';
 import { Race } from './race.js';
+import { FlightRace } from './flightRace.js';
 import { attachMultiplayer } from '../multiplayer/game-bridge.js';
+import { attachAccounts } from './accounts.js';
 
 const fmt = (t) => { if (t == null) return '--'; const m = Math.floor(t / 60); return `${m}:${(t - m * 60).toFixed(3).padStart(6, '0')}`; };
 const costOf = (list, id) => { const i = list.findIndex((x) => x.id === id); const it = list[i]; return it && it.cost != null ? it.cost : (i < 3 ? 0 : 400 * i); };
@@ -42,7 +44,9 @@ export class Game {
     addEventListener('pointerdown', unlock, { once: false }); addEventListener('keydown', unlock);
 
     this.worlds = this.mods.worlds.WORLDS;
-    this.career = buildCareer(this.worlds);
+    const groundWorlds = this.worlds.filter((w) => !w.modes || w.modes.includes('ground'));
+    const flightWorlds = this.worlds.filter((w) => !w.modes || w.modes.includes('flight'));
+    this.career = [...buildFlightCareer(flightWorlds), ...buildCareer(groundWorlds).map((e) => ({ ...e, id: e.id, vehicleMode: 'ground' }))];
 
     setLoading('Building menus…', 0.7);
     this.buildUI();
@@ -50,6 +54,7 @@ export class Game {
     if (this.mods.multiplayer) {
       try { this.online = attachMultiplayer(this, THREE); } catch (e) { console.error('[game] multiplayer failed to start', e); }
     }
+    attachAccounts(this).catch((e) => console.error('[game] accounts failed to start', e));
     this.applyPreset(this.quality.preset);
     this.inputState = this.input.state;
     this.state = 'menu';
@@ -67,12 +72,12 @@ export class Game {
     const opts = {
       root: document.body, THREE,
       settings: this.profile.settings,
-      tracks: this.worlds.map((w) => ({ id: w.id, name: w.name, desc: w.description, description: w.description, unlock: w.unlock ?? w.unlockStars ?? 0 })),
+      tracks: this.worlds.map((w) => ({ id: w.id, name: w.name, desc: w.description, description: w.description, unlock: w.unlock ?? w.unlockStars ?? 0, modes: w.modes })),
       modes: [
         { id: 'career', name: 'Career', icon: '★', desc: 'Win events, earn credits and stars, unlock new tracks.' },
-        { id: 'quick', name: 'Quick Race', icon: '⚑', desc: 'Jump straight into a race against the computer.' },
+        { id: 'quick', name: 'Quick Race', icon: '⚑', desc: 'Jump straight into a race against AI pilots.' },
         { id: 'timetrial', name: 'Time Trial', icon: '⏱', desc: 'Race the clock and beat your best lap.' },
-        { id: 'multiplayer', name: 'Multiplayer', icon: '◎', desc: 'Race other players online with a room code.' },
+        { id: 'multiplayer', name: 'Multiplayer', icon: '◎', desc: 'Race other pilots online with a room code.' },
       ],
       paints: car.PAINTS.map((p) => ({ ...p, cost: costOf(car.PAINTS, p.id), price: costOf(car.PAINTS, p.id) })),
       wheels: car.WHEELS.map((w) => ({ ...w, cost: costOf(car.WHEELS, w.id), price: costOf(car.WHEELS, w.id) })),
@@ -116,6 +121,10 @@ export class Game {
     ui.on('equip', (p) => this.equip(p));
     ui.on('preview', (p) => this.preview(p));
     ui.on('reset', () => { this.profile = resetProfile(); this.save(); this.pushProfile(); this.showroomCar.setPaint(this.profile.car.paint); this.ui.toast('Progress reset'); });
+    ui.on('tutorial', (t) => {
+      if (t && (t.action === 'skip' || t.action === 'complete')) { this.profile.tutorialDone = true; this.save(); }
+      if (t && t.action === 'skip' && this.race && this.lastCfg && this.lastCfg.mode === 'tutorial') this.race.skipTutorial && this.race.skipTutorial();
+    });
     ui.on('screen', (s) => { this.showroomView = s === 'garage' ? 'garage' : 'menu'; });
     if (ui.input && this.input.setExternal) {
       this.input.setExternal(() => (typeof ui.input.read === 'function' ? ui.input.read(1 / 60) : ui.input));
@@ -187,7 +196,7 @@ export class Game {
       const a = Math.PI + (i - 4) * 0.22; bar.position.set(Math.sin(a) * 14, 3, Math.cos(a) * 14); scene.add(bar);
     }
     const P = this.profile;
-    const car = this.mods.car.createRoadster({ paint: P.car.paint, wheels: P.car.wheels, quality: this.quality.preset.carDetail });
+    const car = this.mods.car.createRoadster({ model: P.car.model || 'rocket', paint: P.car.paint, wheels: P.car.wheels, quality: this.quality.preset.carDetail });
     car.object.position.y = 0.06;
     car.object.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     scene.add(car.object);
@@ -195,6 +204,16 @@ export class Game {
     this.showroom = { scene, camera, t: 0, disc, ring };
     this.showroomView = 'menu';
     this.onResize();
+  }
+
+  rebuildShowroomCar() {
+    const P = this.profile, sc = this.showroom.scene, old = this.showroomCar;
+    const car = this.mods.car.createRoadster({ model: P.car.model || 'rocket', paint: P.car.paint, wheels: P.car.wheels, quality: this.quality.preset.carDetail });
+    car.object.position.y = 0.06; car.object.rotation.y = old.object.rotation.y;
+    car.object.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    sc.remove(old.object); old.dispose && old.dispose();
+    sc.add(car.object); this.showroomCar = car;
+    this.save();
   }
 
   updateShowroom(dt) {
@@ -219,7 +238,8 @@ export class Game {
 
   equip(e) {
     const P = this.profile;
-    if (!e.kind) { // team UI sends the whole car: { paint, wheels }
+    if (!e.kind) { // team UI sends the whole car: { paint, wheels, model }
+      if (e.model && e.model !== P.car.model) { P.car.model = e.model; this.rebuildShowroomCar(); }
       if (e.paint && e.paint !== P.car.paint) this.equip({ kind: 'paint', id: e.paint });
       if (e.wheels && e.wheels !== P.car.wheels) this.equip({ kind: 'wheel', id: e.wheels });
       return;
@@ -251,18 +271,32 @@ export class Game {
     let cfg;
     const P = this.profile;
     const avgUp = Math.round((P.upgrades.motor + P.upgrades.inverter + P.upgrades.tires + P.upgrades.battery) / 4);
+    const vm = sel.vehicleMode || (sel.mode === 'tutorial' ? 'flight' : P.settings.vehicleMode) || 'flight';
+    const flight = vm === 'flight';
+    const d = typeof sel.difficulty === 'string' ? ({ easy: 0, normal: 1, hard: 2 }[sel.difficulty] ?? 1) : (sel.difficulty ?? 1);
     if (sel.mode === 'career') {
       const ev = this.career.find((e) => e.id === sel.eventId);
       if (!ev) return;
       const wd = this.worlds.find((w) => w.id === ev.world) || {};
-      cfg = { mode: 'career', weather: wd.defaultWeather || 'clear', type: ev.type, worldId: ev.world, laps: ev.laps, opponents: ev.opponents, skill: ev.skill, aiUpgrade: ev.aiUpgrade, event: ev };
+      cfg = { mode: 'career', flight: ev.vehicleMode === 'flight', weather: wd.defaultWeather || 'clear', type: ev.type, worldId: ev.world, laps: ev.laps, opponents: ev.opponents, skill: ev.skill, aiUpgrade: ev.aiUpgrade, event: ev };
+    } else if (sel.mode === 'tutorial') {
+      cfg = { mode: 'tutorial', flight: true, type: 'tutorial', worldId: (this.worlds.find((w) => w.id === 'coast') || this.worlds[0]).id, laps: 1, opponents: 0, skill: 1, aiUpgrade: 0 };
+    } else if (flight && (sel.mode === 'free' || sel.mode === 'freeflight')) {
+      cfg = { mode: 'freeflight', flight: true, type: 'freeflight', worldId: sel.track || this.worlds[0].id, laps: 99, opponents: 0, skill: 1, aiUpgrade: 0 };
+    } else if (flight && sel.mode === 'timetrial') {
+      cfg = { mode: 'timetrial', flight: true, type: 'ringtrial', worldId: sel.track || this.worlds[0].id, laps: 3, opponents: 0, skill: 1, aiUpgrade: 0 };
+    } else if (flight && sel.mode !== 'multiplayer') {
+      cfg = { mode: 'quick', flight: true, type: 'ringrace', worldId: sel.track || this.worlds[0].id, laps: sel.laps || 3, opponents: sel.opponents ?? 5,
+        skill: [0.76, 0.86, 0.95][d] || 0.86, aiUpgrade: Math.min(4, Math.max(0, avgUp + d - 1)) };
     } else if (sel.mode === 'timetrial') {
       cfg = { mode: 'timetrial', type: 'free', worldId: sel.track, laps: 99, opponents: 0, skill: 1, aiUpgrade: 0 };
     } else {
-      const d = typeof sel.difficulty === 'string' ? ({ easy: 0, normal: 1, hard: 2 }[sel.difficulty] ?? 1) : (sel.difficulty ?? 1);
       cfg = { mode: 'quick', type: 'race', worldId: sel.track || this.worlds[0].id, laps: sel.laps || 3, opponents: sel.opponents ?? 5,
         skill: [0.82, 0.92, 1.0][d] || 0.92, aiUpgrade: Math.min(4, Math.max(0, avgUp + d - 1)) };
     }
+    const wd = this.worlds.find((w) => w.id === cfg.worldId);
+    if (!wd) cfg.worldId = this.worlds[0].id;
+    if (!cfg.flight && wd && wd.modes && !wd.modes.includes('ground')) cfg.worldId = (this.worlds.find((w) => !w.modes || w.modes.includes('ground')) || this.worlds[0]).id;
     this.lastCfg = cfg;
     this.launch(cfg);
   }
@@ -273,7 +307,7 @@ export class Game {
     if (this.ui.setLoading) this.ui.setLoading(0.3, 'Loading track…'); else this.ui.toast && this.ui.toast('Loading track…');
     const go = () => {
       try {
-        const race = new Race(this, cfg);
+        const race = cfg.flight ? new FlightRace(this, cfg) : new Race(this, cfg);
         race.build();
         this.race = race;
         this.state = 'race';
@@ -371,6 +405,7 @@ export class Game {
     this.last = now;
     this.quality.frame(dt, this.state === 'race');
     this.inputState = this.input.poll(dt, this.profile.settings.steerSens);
+    this.flightInput = this.input.pollFlight(dt, !!this.profile.settings.invertPitch);
     if (!this.teamUI && this.input.wasPressed('Escape', 'KeyP', 'PadEscape')) {
       if (this.state === 'race') this.pause(); else if (this.state === 'paused') this.resume();
     }

@@ -58,7 +58,7 @@ export class Race {
       const stats = isPlayer ? carStats(P.upgrades) : carStats({ motor: this.cfg.aiUpgrade, inverter: this.cfg.aiUpgrade, tires: this.cfg.aiUpgrade, battery: this.cfg.aiUpgrade }, 0.97 + 0.03 * this.cfg.skill);
       const v = new Vehicle(stats); v.gravityScale = gScale;
       const paint = isPlayer ? P.car.paint : paints[i % paints.length];
-      const model = g.mods.car.createRoadster({ paint, wheels: isPlayer ? P.car.wheels : wheels[i % wheels.length], quality: isPlayer ? q.carDetail : (q.id === 'ultra' ? 'high' : q.id === 'high' ? 'medium' : 'low') });
+      const model = g.mods.car.createRoadster({ model: isPlayer ? (P.car.model || 'rocket') : (i % 3 === 0 ? 'classic' : 'rocket'), paint, wheels: isPlayer ? P.car.wheels : wheels[i % wheels.length], quality: isPlayer ? q.carDetail : (q.id === 'ultra' ? 'high' : q.id === 'high' ? 'medium' : 'low') });
       model.object.traverse((o) => { if (o.isMesh) { o.castShadow = q.shadows && (isPlayer || q.id !== 'low'); } });
       this.scene.add(model.object);
       const row = Math.floor(i / 2), side = i % 2 ? 1 : -1;
@@ -112,6 +112,7 @@ export class Race {
 
     // minimap
     const pts = []; for (let i = 0; i < this.track.n; i += 4) pts.push({ x: this.track.px[i], z: this.track.pz[i] });
+    this.mapPts = pts;
     g.ui.hud.setTrack && g.ui.hud.setTrack(pts, this.track.bounds);
 
     this.camera.far = q.drawDist * 1.6;
@@ -397,7 +398,7 @@ export class Race {
 
     // end of race flow
     if (this.state === 'finished' && this.stateT > 3.5 && !this.ended && !this.online) this.endRace();
-    if (this.online) this.online.postUpdate(this);
+    if (this.online) this.online.postUpdate(this, dt);
     if (this.cfg.type === 'free' && this.state === 'race') this.message = this.message === 'GO!' ? 'GO!' : '';
   }
 
@@ -468,7 +469,7 @@ export class Race {
       wrongWay: p.wrongT > 1.2,
       ghostDelta: this.ghostDelta,
       fps: this.game.quality.fps, qualityLabel: this.game.quality.preset.name,
-      minimap: { player: { x: v.x, z: v.z, rot: v.yaw }, others },
+      minimap: { trackPoints: this.mapPts, player: { x: v.x, z: v.z, rot: v.yaw }, others },
     };
   }
 

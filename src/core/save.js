@@ -12,12 +12,14 @@ export function defaultProfile() {
     best: {},             // trackId -> best lap seconds
     ghosts: {},           // trackId -> packed ghost samples
     owned: { paints: ['pearlWhite', 'ultraRed', 'solidBlack'], wheels: ['aero'] },
-    car: { paint: 'ultraRed', wheels: 'aero' },
+    car: { model: 'rocket', paint: 'ultraRed', wheels: 'aero' },
+    tutorialDone: false,
     upgrades: { motor: 0, inverter: 0, tires: 0, battery: 0 },
     settings: {
       quality: 'auto', showFps: false, units: 'kmh', camera: 0,
       master: 0.8, music: 0.6, sfx: 0.9, steerSens: 1, tiltSteer: false,
       autoThrottle: false, vibration: true, assist: true,
+      vehicleMode: 'flight', flightAssist: true, invertPitch: false,
     },
     stats: { races: 0, wins: 0, km: 0, drift: 0 },
   };
@@ -57,3 +59,6 @@ export function resetProfile() {
   try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
   return defaultProfile();
 }
+
+/** A profile from elsewhere (e.g. a cloud save), filled out with current defaults. */
+export function mergeProfile(data) { return merge(defaultProfile(), JSON.parse(JSON.stringify(data || {}))); }

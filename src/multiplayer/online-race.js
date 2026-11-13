@@ -43,6 +43,13 @@ export class OnlineRace {
     const s = this.mp.session;
     const racers = (s?.room?.players || []).filter((p) => !p.spectator);
     const slot = Math.max(0, racers.findIndex((p) => p.id === s?.selfId));
+    this.racers = racers.length;
+    if (typeof race.onlineSpawn === 'function') race.onlineSpawn(slot); // flight: the race places itself
+    else this.placeOnGrid(race, slot);
+    this.makeRemotes(race);
+  }
+
+  placeOnGrid(race, slot) {
     const row = Math.floor(slot / 2);
     const side = slot % 2 ? 1 : -1;
     const tr = race.track;
@@ -51,16 +58,16 @@ export class OnlineRace {
     c.v.place(p.x, p.y, p.z, p.yaw);
     tr.locate(p.x, p.z, -1, c.info);
     c.prevDist = c.info.dist;
-    this.racers = racers.length;
+  }
 
+  makeRemotes(race) {
     this.remote = new RemoteCars({
       THREE: this.THREE,
       scene: race.scene,
       tagHeight: 1.7,
       createCarMesh: (color, carId) => {
         const { paint, wheels } = decodeCarId(carId);
-        const model = this.createRoadster({ paint, wheels, quality: 'low' });
-        return model.object;
+        return this.createRoadster({ paint, wheels, quality: 'low' }); // model: lets RemoteCars animate it
       },
     });
   }
@@ -93,7 +100,14 @@ export class OnlineRace {
   }
 
   /** Called at the end of Race.postUpdate(), after the car meshes moved. */
-  postUpdate(race) {
+  postUpdate(race, dt = 1 / 60) {
+    // Flight (or any other mode) can hand us its own state:
+    //   race.onlineState() -> { mode: 'flight', pos, quat, vel, speed, thrust, ringIndex, lap, progress, fx }
+    if (typeof race.onlineState === 'function') {
+      this.mp.sendState(race.onlineState());
+      this._drawOthers(race, dt);
+      return;
+    }
     const c = race.player;
     const v = c.v;
     const o = c.model.object;
@@ -109,9 +123,12 @@ export class OnlineRace {
       progress: race.track.length ? c.info.dist / race.track.length : 0,
       fx,
     });
-    this.cars = this.mp.getRemoteCars();
-    this.remote?.update(this.cars, race.camera);
+    this._drawOthers(race, dt);
+  }
 
+  _drawOthers(race, dt) {
+    this.cars = this.mp.getRemoteCars();
+    this.remote?.update(this.cars, race.camera, dt);
     if (this.results && !race.ended) race.endRace();
   }
 
@@ -156,7 +173,7 @@ export class OnlineRace {
       racers: rows.length || this.racers || 1,
       bestLap: c.bestLap,
       totalTime: me?.totalMs != null ? me.totalMs / 1000 : c.finishTime,
-      driftScore: Math.round(race.drift.score),
+      driftScore: Math.round(race.drift?.score || 0),
       dnf: !!me?.dnf,
       table: rows.map((r) => ({ pos: r.place, name: r.name, me: r.id === s?.selfId, time: r.dnf ? 'DNF' : fmt(r.totalMs) })),
     };

@@ -9,7 +9,7 @@ import { loadSettings, saveSettings, detectQuality, resolveGraphics, isTouchDevi
 import { createInput } from './input.js';
 import { createTouchControls } from './touch.js';
 import { createDeviceWatcher, canTilt, DEVICE_LABEL } from './device.js';
-import { howToHTML, QUICK_HINT, CONTROLS } from './howto.js';
+import { howToHTML, QUICK_HINT, controlsFor } from './howto.js';
 import { createHUD } from './hud.js';
 import { createShowroom, buildPlaceholderRoadster } from './garage.js';
 import { DEFAULT_PAINTS, DEFAULT_WHEELS, DEFAULT_TRACKS, DEFAULT_MODES, UPGRADES } from './catalog.js';
@@ -144,13 +144,15 @@ export function createUI(opts = {}) {
   }
   function back() {
     if (paused && current === 'pause') { resume(); return; }
+    if (current === 'confirm') { sfx('back'); closeConfirm(false); return; }
     if (!stack.length) return;
     sfx('back');
     show(stack.pop());
   }
   function show(name, data) {
-    const prev = screens[current];
-    if (prev) prev.classList.remove('active');
+    // Deactivate every other screen, not just `current`: several flows reset `current`
+    // before calling show(), which used to leave dialogs (e.g. the quit confirm) stuck open.
+    for (const [n, sEl] of Object.entries(screens)) if (n !== name) sEl.classList.remove('active');
     current = name;
     const el = screens[name];
     el._onShow?.(data);
@@ -164,7 +166,10 @@ export function createUI(opts = {}) {
 
   const topbar = () => `<div class="ui-topbar">
       <div class="ui-brand"><span class="ui-logo">ROADSTER</span></div>
-      <div class="ui-wallet"><span class="ui-stars">★ <b data-bind="stars">0</b></span><span class="ui-credits"><b data-bind="credits">0</b> cr</span></div>
+      <div class="ui-vmode ui-seg" role="radiogroup" aria-label="Vehicle mode">
+        <button data-vmode="flight" role="radio">✈ Flight</button><button data-vmode="ground" role="radio">⛟ Ground</button>
+      </div>
+      <div class="ui-wallet"><button class="ui-profile" data-go="account"><i>●</i><b data-bind="accountName">Guest</b></button><span class="ui-stars">★ <b data-bind="stars">0</b></span><span class="ui-credits"><b data-bind="credits">0</b> cr</span></div>
     </div>`;
   const backBtn = (label = 'Back') => `<button class="ui-back" data-act="back" aria-label="${label}"><span>‹</span> ${label}</button>`;
 
@@ -189,9 +194,11 @@ export function createUI(opts = {}) {
     <nav class="m-nav">
       <button data-go="play" class="m-big" data-autofocus><small>01</small>Play</button>
       <button data-go="garage"><small>02</small>Garage</button>
-      <button data-go="settings"><small>03</small>Settings</button>
-      <button data-go="howto"><small>04</small>How to drive</button>
-      <button data-go="about"><small>05</small>About</button>
+      <button data-act="tutorial"><small>03</small>Tutorial</button>
+      <button data-go="settings"><small>04</small>Settings</button>
+      <button data-go="howto"><small>05</small>How to play</button>
+      <button data-go="account"><small>06</small>Profile</button>
+      <button data-go="about"><small>07</small>About</button>
     </nav>
     <div class="m-hero">
       <div class="m-hero-name">TESLA ROADSTER</div>
@@ -218,6 +225,12 @@ export function createUI(opts = {}) {
   playEl.addEventListener('click', (e) => {
     const b = e.target.closest('[data-mode]'); if (!b) return; sfx('click');
     const mode = b.dataset.mode;
+    if (!settings.tutorialSeen && settings.vehicleMode === 'flight' && mode !== 'multiplayer') {
+      settings.tutorialSeen = true; saveSettings(settings);
+      confirmBox('First flight?', 'Take the one-minute tutorial to learn thrust, pitch, and rings.',
+        () => startTutorial(), { yes: 'Start tutorial', no: 'Skip', onNo: () => { playEl.querySelector(`[data-mode="${CSS.escape(mode)}"]`)?.click(); } });
+      return;
+    }
     if (mode === 'career') go('career');
     else if (mode === 'multiplayer') go('multiplayer');
     else go('setup', { data: { mode } });
@@ -269,7 +282,9 @@ export function createUI(opts = {}) {
   function renderSetup() {
     setupEl.querySelector('[data-bind=setupTitle]').textContent = setup.mode === 'timetrial' ? 'Time Trial' : 'Quick Race';
     setupEl.querySelectorAll('[data-only=quick]').forEach((r) => { r.style.display = setup.mode === 'quick' ? '' : 'none'; });
-    setupEl.querySelector('.su-tracks').innerHTML = tracks.map((t, i) => `
+    const usable = tracks.filter((t) => !t.modes || t.modes.includes(settings.vehicleMode || 'flight'));
+    if (usable.length && !usable.some((t) => t.id === setup.track)) setup.track = usable[0].id;
+    setupEl.querySelector('.su-tracks').innerHTML = usable.map((t, i) => `
       <button class="ui-card su-track${t.id === setup.track ? ' sel' : ''}" data-track="${esc(t.id)}" style="--i:${i}">
         <div class="su-thumb" style="${t.thumb ? `background-image:url('${esc(t.thumb)}')` : `--h:${(i * 67 + 200) % 360}`}"></div>
         <b>${esc(t.name)}</b><p>${esc(t.desc || '')}</p>
@@ -477,6 +492,7 @@ export function createUI(opts = {}) {
     { tab: 'graphics', key: 'showFps', label: 'Show FPS', type: 'toggle' },
     { tab: 'controls', key: 'controls', label: 'Controls', type: 'seg', options: [['auto', 'Auto'], ['keyboard', 'Keyboard'], ['gamepad', 'Controller'], ['touch', 'Touch']] },
     { tab: 'controls', key: 'steerSensitivity', label: 'Steering sensitivity', type: 'range', min: 0.5, max: 1.5, step: 0.05, fmt: (v) => Math.round(v * 100) + '%' },
+    { tab: 'controls', key: 'invertPitch', label: 'Invert pitch (flight)', type: 'toggle' },
     { tab: 'controls', key: 'tiltSteer', label: 'Tilt to steer', type: 'toggle', when: () => device() === 'touch' && canTilt() },
     { tab: 'controls', key: 'haptics', label: 'Vibration', type: 'toggle', when: () => device() === 'touch' },
     { tab: 'audio', key: 'masterVol', label: 'Master volume', type: 'range', min: 0, max: 1, step: 0.05, fmt: (v) => Math.round(v * 100) + '%' },
@@ -514,8 +530,8 @@ export function createUI(opts = {}) {
     } else if (settingsTab === 'controls') {
       const d = device();
       extra.innerHTML = `<p class="st-note">${settings.controls === 'auto' ? `Auto: you're using a <b>${esc(DEVICE_LABEL[d].toLowerCase())}</b>. It switches by itself when you use something else.` : `Set to <b>${esc(DEVICE_LABEL[d].toLowerCase())}</b>.`}</p>
-        <table class="st-keys"><tbody>${CONTROLS[d].map((c) => `<tr><td>${esc(c.what)}</td><td><kbd>${esc(c.key)}</kbd></td></tr>`).join('')}</tbody></table>
-        <button class="ui-secondary st-howto" data-go="howto">How to drive</button>`;
+        <table class="st-keys"><tbody>${controlsFor(d, settings.vehicleMode).map((c) => `<tr><td>${esc(c.what)}</td><td><kbd>${esc(c.key)}</kbd></td></tr>`).join('')}</tbody></table>
+        <button class="ui-secondary st-howto" data-go="howto">How to play</button>`;
     } else if (settingsTab === 'gameplay') {
       extra.innerHTML = `<button class="ui-secondary st-reset">Reset all settings</button>`;
     } else extra.innerHTML = '';
@@ -558,14 +574,14 @@ export function createUI(opts = {}) {
   // How to drive
   const howEl = mount('howto', h(`<section class="s-howto">
     ${topbar()}
-    <div class="ui-head">${backBtn()}<h2>How to drive</h2></div>
+    <div class="ui-head">${backBtn()}<h2>How to play</h2></div>
     <div class="ht-body"></div>
     <div class="ht-actions"><button class="ui-primary ht-go" data-howto="go" hidden>Start race <span>›</span></button></div>
   </section>`));
   let pendingRace = null;
   function renderHowTo() {
     const d = device();
-    howEl.querySelector('.ht-body').innerHTML = howToHTML(d, { tiltAvailable: canTilt(), tiltOn: !!settings.tiltSteer && touchCtl.tiltActive });
+    howEl.querySelector('.ht-body').innerHTML = howToHTML(d, { tiltAvailable: canTilt(), tiltOn: !!settings.tiltSteer && touchCtl.tiltActive, vehicle: settings.vehicleMode || 'flight' });
     howEl.querySelector('.ht-go').hidden = !pendingRace;
   }
   howEl._onShow = (data) => { pendingRace = data?.pending || null; renderHowTo(); };
@@ -593,7 +609,7 @@ export function createUI(opts = {}) {
       <h2>Paused</h2>
       <button class="ui-primary" data-p="resume" data-autofocus>Resume</button>
       <button class="ui-secondary" data-p="restart">Restart</button>
-      <button class="ui-secondary" data-p="howto">How to drive</button>
+      <button class="ui-secondary" data-p="howto">How to play</button>
       <button class="ui-secondary" data-p="settings">Settings</button>
       <button class="ui-secondary" data-p="quit">Quit to menu</button>
     </div>
@@ -630,14 +646,127 @@ export function createUI(opts = {}) {
   // Confirm dialog
   const confirmEl = mount('confirm', h(`<section class="s-confirm ui-modal"><div class="ui-dialog">
     <h2></h2><p></p><div class="r-btns"><button class="ui-secondary" data-c="no" data-autofocus>Cancel</button><button class="ui-primary" data-c="yes">Confirm</button></div></div></section>`));
-  let confirmCb = null;
-  function confirmBox(t, p, cb) { confirmEl.querySelector('h2').textContent = t; confirmEl.querySelector('p').textContent = p; confirmCb = cb; go('confirm'); }
+  let confirmCb = null, confirmNo = null;
+  function confirmBox(t, p, cb, { yes = 'Confirm', no = 'Cancel', onNo = null } = {}) {
+    confirmEl.querySelector('h2').textContent = t; confirmEl.querySelector('p').textContent = p;
+    confirmEl.querySelector('[data-c=yes]').textContent = yes; confirmEl.querySelector('[data-c=no]').textContent = no;
+    confirmCb = cb; confirmNo = onNo; go('confirm');
+  }
+  // Every exit path (confirm, cancel, Esc/Backspace/gamepad B via back(), backdrop click) closes the dialog.
+  function closeConfirm(ok) {
+    const cb = ok ? confirmCb : confirmNo; confirmCb = null; confirmNo = null;
+    if (current === 'confirm') { screens.confirm.classList.remove('active'); current = null; const prev = stack.pop(); if (prev) show(prev); }
+    cb?.();
+  }
   confirmEl.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-c]'); if (!b) return;
-    if (b.dataset.c === 'yes') { const cb = confirmCb; confirmCb = null; cb?.(); } else back();
+    const b = e.target.closest('[data-c]');
+    if (!b) { if (e.target === confirmEl) { sfx('back'); closeConfirm(false); } return; }
+    sfx(b.dataset.c === 'yes' ? 'click' : 'back');
+    closeConfirm(b.dataset.c === 'yes');
   });
 
-  // Loading overlay (independent of screens)
+  // Account: sign in, create account, or play as guest. The multiplayer team owns the backend;
+  // this screen only emits 'auth' and reflects ui.setAccount({...}).
+  let account = { signedIn: false, email: '', name: '', pending: false, error: '' };
+  let authTab = 'signin';
+  const accEl = mount('account', h(`<section class="s-account">
+    ${topbar()}
+    <div class="ui-head">${backBtn()}<h2>Profile</h2></div>
+    <div class="acc-panel">
+      <div class="acc-out">
+        <div class="ui-tabs acc-tabs" role="tablist"><button data-atab="signin" role="tab">Sign in</button><button data-atab="signup" role="tab">Create account</button></div>
+        <form class="acc-form" novalidate>
+          <label class="ui-field"><span>Email</span><input type="email" name="email" autocomplete="email" inputmode="email" required></label>
+          <label class="ui-field"><span>Password</span><input type="password" name="password" autocomplete="current-password" minlength="8" required></label>
+          <label class="ui-field acc-confirm"><span>Confirm password</span><input type="password" name="password2" autocomplete="new-password"></label>
+          <p class="acc-err" role="alert"></p>
+          <button class="ui-primary acc-submit" type="submit">Sign in</button>
+        </form>
+        <div class="acc-or"><span>or</span></div>
+        <button class="ui-secondary acc-guest">Play as guest</button>
+        <p class="acc-note">Guests keep progress on this device only. An account saves it online and lets friends find you.</p>
+      </div>
+      <div class="acc-in">
+        <div class="acc-avatar"></div>
+        <b class="acc-name"></b><span class="acc-email"></span>
+        <button class="ui-secondary acc-signout">Sign out</button>
+      </div>
+    </div>
+  </section>`));
+  const accForm = accEl.querySelector('.acc-form');
+  function renderAccount() {
+    accEl.classList.toggle('signed-in', !!account.signedIn);
+    accEl.querySelectorAll('[data-atab]').forEach((b) => b.classList.toggle('sel', b.dataset.atab === authTab));
+    accEl.querySelector('.acc-confirm').style.display = authTab === 'signup' ? '' : 'none';
+    accForm.password.autocomplete = authTab === 'signup' ? 'new-password' : 'current-password';
+    const sub = accEl.querySelector('.acc-submit');
+    sub.disabled = !!account.pending;
+    sub.textContent = account.pending ? 'Please wait…' : (authTab === 'signup' ? 'Create account' : 'Sign in');
+    accEl.querySelector('.acc-err').textContent = account.error || '';
+    const nm = account.name || (account.email || '').split('@')[0] || 'Driver';
+    accEl.querySelector('.acc-avatar').textContent = nm.slice(0, 1).toUpperCase();
+    accEl.querySelector('.acc-name').textContent = nm;
+    accEl.querySelector('.acc-email').textContent = account.email || '';
+  }
+  accEl._onShow = () => { account.error = ''; renderAccount(); };
+  accEl.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-atab]');
+    if (t) { authTab = t.dataset.atab; account.error = ''; sfx('click'); renderAccount(); return; }
+    if (e.target.closest('.acc-guest')) { sfx('click'); emit('auth', { action: 'guest' }); back(); return; }
+    if (e.target.closest('.acc-signout')) {
+      confirmBox('Sign out?', 'Progress on this device stays; online saves resume when you sign back in.', () => {
+        emit('auth', { action: 'signout' }); account = { signedIn: false, email: '', name: '' }; renderAccount(); refreshBindings();
+      }, { yes: 'Sign out' });
+    }
+  });
+  accForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const email = accForm.email.value.trim(), password = accForm.password.value;
+    let err = '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) err = 'Enter a valid email address.';
+    else if (password.length < 8) err = 'Password must be at least 8 characters.';
+    else if (authTab === 'signup' && password !== accForm.password2.value) err = 'Passwords do not match.';
+    if (err) { account.error = err; sfx('error'); renderAccount(); return; }
+    account.error = ''; account.pending = true; renderAccount(); sfx('click');
+    emit('auth', { action: authTab, email, password });
+    accForm.password.value = ''; accForm.password2.value = ''; // never keep the password in the DOM
+  });
+
+  // Tutorial cards: the game drives them with ui.tutorial.show / done.
+  const tutEl = h(`<div class="ui-tut" role="status" aria-live="polite">
+    <div class="tut-card"><div class="tut-step"></div><p class="tut-text"></p><div class="tut-keys"></div>
+      <button class="tut-skip">Skip tutorial</button></div></div>`);
+  shell.appendChild(tutEl);
+  let tutCurrent = null, tutTimer = 0, tutCount = 0;
+  const keyChips = (hint) => String(hint || '').split(/\s*\+\s*|\s*\/\s*/).filter(Boolean).map((k) => `<kbd>${esc(k)}</kbd>`).join('<em>or</em>');
+  tutEl.querySelector('.tut-skip').addEventListener('click', () => { sfx('back'); tutorial.hide(); emit('tutorial', { action: 'skip' }); });
+  const tutorial = {
+    /** Show a step card that waits for the player: { id, text, keyHint, touchHint?, step?, total? } */
+    show({ id, text, keyHint, touchHint, step, total } = {}) {
+      clearTimeout(tutTimer);
+      tutCurrent = id; tutCount++;
+      tutEl.classList.remove('done');
+      tutEl.querySelector('.tut-step').textContent = step ? `STEP ${step}${total ? ' / ' + total : ''}` : 'TUTORIAL';
+      tutEl.querySelector('.tut-text').textContent = text || '';
+      const hint = touch && touchHint ? touchHint : keyHint;
+      tutEl.querySelector('.tut-keys').innerHTML = hint ? keyChips(hint) : '';
+      tutEl.classList.remove('show'); void tutEl.offsetWidth; tutEl.classList.add('show');
+      emit('tutorial', { action: 'show', id });
+    },
+    /** Mark a step complete: shows a check, then hides unless a new step replaces it. */
+    done(id) {
+      if (id != null && id !== tutCurrent) return;
+      tutEl.classList.add('done'); sfx('buy');
+      const n = tutCount;
+      tutTimer = setTimeout(() => { if (n === tutCount) tutEl.classList.remove('show'); }, 900);
+    },
+    hide() { clearTimeout(tutTimer); tutCurrent = null; tutEl.classList.remove('show', 'done'); },
+    get current() { return tutCurrent; },
+    /** Call when the whole tutorial finishes. */
+    complete() { settings.tutorialSeen = true; saveSettings(settings); this.hide(); emit('tutorial', { action: 'complete' }); },
+  };
+
+
   const loadEl = h(`<div class="ui-loading"><div class="l-inner"><div class="l-logo">ROADSTER</div><div class="l-bar"><i></i></div><p class="l-text"></p><p class="l-tip"></p></div></div>`);
   shell.appendChild(loadEl);
 
@@ -651,11 +780,16 @@ export function createUI(opts = {}) {
   const HOWTO_SEEN = 'roadster.howto.v1';
   const HINT_COUNT = 'roadster.hints.v1';
   function startRace(cfg) {
-    if (!store(HOWTO_SEEN) && cfg.mode !== 'multiplayer') { go('howto', { data: { pending: cfg } }); return; }
+    if (!store(HOWTO_SEEN) && cfg.mode !== 'multiplayer' && cfg.mode !== 'tutorial') { go('howto', { data: { pending: cfg } }); return; }
     sfx('click');
-    emit('start', { ...cfg, car: carPayload(), settings: { ...settings, graphics: resolveGraphics(settings) } });
+    raceVehicle = cfg.vehicleMode || settings.vehicleMode || 'flight';
+    hud.setMode(raceVehicle);
+    touchCtl.setThrust(0);
+    emit('start', { ...cfg, vehicleMode: raceVehicle, car: carPayload(), settings: { ...settings, graphics: resolveGraphics(settings) } });
     enterRace();
   }
+  function startTutorial() { startRace({ mode: 'tutorial', vehicleMode: settings.vehicleMode || 'flight', track: tracks[0]?.id }); }
+  let raceVehicle = 'flight';
   function closeOverlays() { screens[current]?.classList.remove('active'); current = null; stack.length = 0; shell.dataset.screen = ''; }
   function enterRace() {
     closeOverlays(); inRace = true; paused = false;
@@ -670,11 +804,12 @@ export function createUI(opts = {}) {
     if (n >= 3 || !inRace) return;
     store(HINT_COUNT, String(n + 1));
     const d = device();
-    const text = d === 'touch' ? (touchCtl.tiltActive ? QUICK_HINT.touchTilt : QUICK_HINT.touch) : QUICK_HINT[d];
+    const pre = raceVehicle === 'ground' ? '' : 'flight_';
+    const text = d === 'touch' ? (touchCtl.tiltActive ? QUICK_HINT[pre + 'touchTilt'] : QUICK_HINT[pre + 'touch']) : QUICK_HINT[pre + d];
     setTimeout(() => inRace && toast(text, { ms: 5000 }), 600);
   }
   function showMenu() {
-    inRace = false; paused = false;
+    inRace = false; paused = false; tutorial.hide();
     shell.classList.remove('in-race');
     hud.show(false); touchCtl.show(false);
     showroom?.setCar({ paint: settings.car.color, wheels: settings.car.wheels });
@@ -695,6 +830,7 @@ export function createUI(opts = {}) {
   }
   function applyInputMode() {
     const mode = device();
+    touchCtl.setMode(raceVehicle);
     touchCtl.show(inRace && !paused && mode === 'touch');
     shell.classList.toggle('is-touch', mode === 'touch');
     shell.dataset.device = mode;
@@ -707,7 +843,7 @@ export function createUI(opts = {}) {
     if (current === 'settings') renderSettings();
   });
   function showResults(r = {}) {
-    inRace = false; touchCtl.show(false); hud.show(false);
+    inRace = false; touchCtl.show(false); hud.show(false); tutorial.hide();
     const pos = r.position;
     resEl.querySelector('.r-kicker').textContent = r.kicker || (r.mode === 'timetrial' ? 'TIME TRIAL' : 'RACE COMPLETE');
     resEl.querySelector('.r-title').textContent = r.title || (pos === 1 ? 'Victory' : pos ? `Finished ${pos}${['th', 'st', 'nd', 'rd'][pos] || 'th'}` : (r.newRecord ? 'New record' : 'Finished'));
@@ -731,6 +867,9 @@ export function createUI(opts = {}) {
     shell.querySelectorAll('[data-bind=stars]').forEach((n) => { n.textContent = typeof profile.stars === 'number' ? profile.stars : Object.values(profile.stars || {}).reduce((a, b) => a + (+b || 0), 0); });
     const p = paints.find((x) => x.id === settings.car.color);
     mainEl.querySelector('[data-bind=paintName]').textContent = p ? p.name : '';
+    shell.querySelectorAll('[data-vmode]').forEach((b) => { const on = b.dataset.vmode === settings.vehicleMode; b.classList.toggle('sel', on); b.setAttribute('aria-checked', on); });
+    shell.querySelectorAll('[data-bind=accountName]').forEach((n) => { n.textContent = account.signedIn ? (account.name || account.email || 'Driver') : 'Guest'; });
+    shell.querySelectorAll('.ui-profile').forEach((n) => n.classList.toggle('in', !!account.signedIn));
   }
 
   // ---------- toasts ----------
@@ -743,6 +882,9 @@ export function createUI(opts = {}) {
 
   // ---------- menu navigation: keyboard + gamepad ----------
   shell.addEventListener('click', (e) => {
+    const vm = e.target.closest('[data-vmode]');
+    if (vm) { settings.vehicleMode = vm.dataset.vmode; saveSettings(settings); sfx('click'); refreshBindings(); emit('vehiclemode', settings.vehicleMode); return; }
+    if (e.target.closest('[data-act=tutorial]')) { startTutorial(); return; }
     const g = e.target.closest('[data-go]'); if (g) { sfx('click'); go(g.dataset.go); return; }
     if (e.target.closest('[data-act=back]')) back();
   });
@@ -823,7 +965,17 @@ export function createUI(opts = {}) {
   refreshBindings();
 
   Object.defineProperties(api, Object.getOwnPropertyDescriptors({
-    on, off, settings, input, hud, toast, touch: touchCtl,
+    on, off, settings, input, hud, toast, touch: touchCtl, tutorial,
+    get vehicleMode() { return settings.vehicleMode; },
+    setVehicleMode(m) { settings.vehicleMode = m; saveSettings(settings); refreshBindings(); },
+    /** Reflect auth state from the backend: { signedIn, email, name, pending, error } */
+    setAccount(a = {}) {
+      const was = account.signedIn;
+      account = { ...account, pending: false, ...a };
+      if (a.signedIn && !was) { if (current === 'account') back(); toast(`Signed in as ${account.name || account.email}`); }
+      renderAccount(); refreshBindings();
+    },
+    get account() { return { ...account }; },
     get showroom() { return showroom; },
     get inRace() { return inRace; },
     get paused() { return paused; },

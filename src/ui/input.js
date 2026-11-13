@@ -3,7 +3,7 @@
 export function createInput(getSettings) {
   const keys = new Set();
   const state = { steer: 0, throttle: 0, brake: 0, handbrake: false, boost: false, source: 'keyboard' };
-  const touchState = { steer: 0, throttle: 0, brake: 0, handbrake: false, boost: false, active: false };
+  const touchState = { steer: 0, throttle: 0, brake: 0, handbrake: false, boost: false, pitch: 0, roll: 0, yaw: 0, thrust: 0, active: false };
   const edge = new Set(); // one-shot actions: pause, camera, reset
   let kbSteer = 0;
 
@@ -51,6 +51,9 @@ export function createInput(getSettings) {
     get steer() { return touchState.steer; }, get throttle() { return touchState.throttle; },
     get brake() { return touchState.brake; }, get handbrake() { return touchState.handbrake; },
     get boost() { return touchState.boost; },
+    // Flight fields (touch): pitch + = nose up, roll + = right, thrust 0..1 lever.
+    get pitch() { return touchState.pitch; }, get roll() { return touchState.roll; },
+    get yaw() { return touchState.yaw; }, get thrust() { return touchState.thrust; },
     /** Returns true once per press for 'pause' | 'camera' | 'reset' | 'horn'. */
     consume(action) { const had = edge.has(action); edge.delete(action); return had; },
     trigger(action) { edge.add(action); },

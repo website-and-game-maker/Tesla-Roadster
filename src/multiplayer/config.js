@@ -50,10 +50,11 @@ export const MP_CONFIG = {
     },
   },
 
-  // URL used to lazy-load PeerJS when it is not already on window.Peer.
-  peerjsModuleUrl: 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/+esm',
+  // PeerJS is vendored (one self-contained ES module), so nothing loads from a CDN at runtime.
+  peerjsModuleUrl: new URL('../../vendor/peerjs.module.js', import.meta.url).href,
 
-  // Global leaderboard (optional). Leave blank to use local-only leaderboards.
+  // Accounts, cloud saves and global leaderboards (all optional, free tier).
+  // Leave blank to stay local-only. Setup: docs/MULTIPLAYER.md -> "Accounts & cloud saves".
   supabase: {
     url: '', // e.g. 'https://abcdefgh.supabase.co'
     anonKey: '',
