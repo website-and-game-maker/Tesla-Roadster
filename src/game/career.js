@@ -7,6 +7,8 @@ export const EVENT_TYPES = {
   timeattack: { name: 'Time Attack', desc: 'Set a lap time. Beat the gold, silver or bronze target.' },
   drift:      { name: 'Drift Trial', desc: 'Score drift points in 2 laps. Chain drifts for a multiplier.' },
   elim:       { name: 'Elimination', desc: 'Last place is knocked out at the end of every lap.' },
+  ringrace:   { name: 'Sky Race',    desc: 'Race rival flyers through every ring. Missed rings cost 2 seconds.' },
+  ringtrial:  { name: 'Ring Trial',  desc: 'Solo run through the rings against gold, silver and bronze times.' },
 };
 
 export const UPGRADE_INFO = {
@@ -50,6 +52,30 @@ export function buildCareer(worlds) {
   return events;
 }
 
+const FPATTERN = [['ringrace', 'ringtrial', 'ringrace'], ['ringtrial', 'ringrace', 'ringrace']];
+
+/** Flight career: the main campaign. Ids are prefixed so ground and flight saves never collide. */
+export function buildFlightCareer(worlds) {
+  const events = [];
+  worlds.forEach((w, wi) => {
+    FPATTERN[wi % 2].forEach((type, k) => {
+      const tier = wi * 3 + k;
+      const last = wi === worlds.length - 1 && k === 2;
+      events.push({
+        id: `f-${w.id}-${k}`, vehicleMode: 'flight', world: w.id, worldName: w.name, type,
+        name: last ? 'Sky Grand Final' : EVENT_TYPES[type].name,
+        laps: type === 'ringtrial' ? 2 : (last ? 3 : 2),
+        opponents: type === 'ringrace' ? Math.min(7, 3 + wi) : 0,
+        skill: Math.min(1.03, 0.82 + tier * 0.02 + (last ? 0.04 : 0)),
+        aiUpgrade: Math.min(3, Math.floor(tier / 4)),
+        reward: 500 + tier * 150,
+        unlockStars: wi === 0 ? 0 : Math.round(wi * 5.5 * (1 + wi * 0.1)),
+      });
+    });
+  });
+  return events;
+}
+
 export function totalStars(profile) {
   return Object.values(profile.stars).reduce((a, b) => a + b, 0);
 }
@@ -58,9 +84,9 @@ export function totalStars(profile) {
 export function starsFor(event, result) {
   if (!result || result.dnf) return 0;
   switch (event.type) {
-    case 'race': return result.position <= 3 ? 4 - result.position : 0;
+    case 'race': case 'ringrace': return result.position <= 3 ? 4 - result.position : 0;
     case 'elim': return result.position === 1 ? 3 : result.survivedLaps >= 2 ? 2 : result.survivedLaps >= 1 ? 1 : 0;
-    case 'timeattack': {
+    case 'timeattack': case 'ringtrial': {
       const t = result.bestLap, g = result.targets;
       return t <= g[0] ? 3 : t <= g[1] ? 2 : t <= g[2] ? 1 : 0;
     }

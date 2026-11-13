@@ -101,6 +101,7 @@ export class Input {
       const e = this.external();
       if (e) {
         if (e.steer) s.steer = clamp(s.steer + e.steer, -1, 1);
+        if (e.roll) s.steer = clamp(s.steer + e.roll, -1, 1);
         s.throttle = Math.max(s.throttle, e.throttle || 0);
         s.brake = Math.max(s.brake, e.brake || 0);
         s.handbrake = s.handbrake || !!e.handbrake;
@@ -109,6 +110,43 @@ export class Input {
       }
     }
     return s;
+  }
+
+  /**
+   * Flight axes (call after poll()). Keyboard: ↑/↓ climb/dive, W/S throttle, Space hover.
+   * Gamepad: left stick Y pitch, RT/LT throttle, A hover. Touch comes from setExternal().
+   */
+  pollFlight(dt, invert = false) {
+    const k = this.keys, f = this.flight || (this.flight = { pitch: 0, throttle: 0, thrust: null, hover: false, yaw: 0 });
+    const up = k.has('ArrowUp') || k.has('KeyI'), down = k.has('ArrowDown') || k.has('KeyK');
+    const target = (up ? 1 : 0) - (down ? 1 : 0);
+    f.pitch += clamp(target - f.pitch, -dt * 5, dt * 5);
+    f.throttle = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
+    f.hover = k.has('Space');
+    f.yaw = (k.has('KeyE') ? 1 : 0) - (k.has('KeyQ') ? 1 : 0);
+    f.thrust = null;
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const p of pads) {
+      if (!p || !p.connected) continue;
+      const ay = p.axes[1] || 0;
+      const rt = p.buttons[7] ? p.buttons[7].value : 0, lt = p.buttons[6] ? p.buttons[6].value : 0;
+      if (Math.abs(ay) > 0.12) f.pitch = clamp(Math.sign(ay) * Math.pow(Math.abs(ay), 1.3), -1, 1);
+      if (rt > 0.05 || lt > 0.05) f.throttle = rt - lt;
+      if (p.buttons[0]?.pressed) f.hover = true;
+      const rx = p.axes[2] || 0; if (Math.abs(rx) > 0.15) f.yaw = rx;
+      break;
+    }
+    if (this.external) {
+      const e = this.external();
+      if (e && e.active) {
+        if (e.pitch) f.pitch = clamp(e.pitch, -1, 1);
+        if (e.thrust != null) f.thrust = e.thrust;
+        if (e.brake || e.hover) f.hover = true;
+        if (e.yaw) f.yaw = e.yaw;
+      }
+    }
+    const out = { ...f, pitch: invert ? -f.pitch : f.pitch };
+    return out;
   }
 
   endFrame() { this.pressed.clear(); }

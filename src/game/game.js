@@ -7,8 +7,9 @@ import { Input } from '../core/input.js';
 import { QualityManager } from '../core/quality.js';
 import { carStats } from '../physics/vehicle.js';
 import { loadModules } from './registry.js';
-import { buildCareer, totalStars, starsFor, EVENT_TYPES, UPGRADE_COST, MAX_UPGRADE } from './career.js';
+import { buildCareer, buildFlightCareer, totalStars, starsFor, EVENT_TYPES, UPGRADE_COST, MAX_UPGRADE } from './career.js';
 import { Race } from './race.js';
+import { FlightRace } from './flightRace.js';
 import { attachMultiplayer } from '../multiplayer/game-bridge.js';
 
 const fmt = (t) => { if (t == null) return '--'; const m = Math.floor(t / 60); return `${m}:${(t - m * 60).toFixed(3).padStart(6, '0')}`; };
@@ -42,7 +43,9 @@ export class Game {
     addEventListener('pointerdown', unlock, { once: false }); addEventListener('keydown', unlock);
 
     this.worlds = this.mods.worlds.WORLDS;
-    this.career = buildCareer(this.worlds);
+    const groundWorlds = this.worlds.filter((w) => !w.modes || w.modes.includes('ground'));
+    const flightWorlds = this.worlds.filter((w) => !w.modes || w.modes.includes('flight'));
+    this.career = [...buildFlightCareer(flightWorlds), ...buildCareer(groundWorlds).map((e) => ({ ...e, id: e.id, vehicleMode: 'ground' }))];
 
     setLoading('Building menus…', 0.7);
     this.buildUI();
@@ -179,7 +182,7 @@ export class Game {
       const a = Math.PI + (i - 4) * 0.22; bar.position.set(Math.sin(a) * 14, 3, Math.cos(a) * 14); scene.add(bar);
     }
     const P = this.profile;
-    const car = this.mods.car.createRoadster({ paint: P.car.paint, wheels: P.car.wheels, quality: this.quality.preset.carDetail });
+    const car = this.mods.car.createRoadster({ model: P.car.model || 'rocket', paint: P.car.paint, wheels: P.car.wheels, quality: this.quality.preset.carDetail });
     car.object.position.y = 0.06;
     car.object.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     scene.add(car.object);
@@ -187,6 +190,16 @@ export class Game {
     this.showroom = { scene, camera, t: 0, disc, ring };
     this.showroomView = 'menu';
     this.onResize();
+  }
+
+  rebuildShowroomCar() {
+    const P = this.profile, sc = this.showroom.scene, old = this.showroomCar;
+    const car = this.mods.car.createRoadster({ model: P.car.model || 'rocket', paint: P.car.paint, wheels: P.car.wheels, quality: this.quality.preset.carDetail });
+    car.object.position.y = 0.06; car.object.rotation.y = old.object.rotation.y;
+    car.object.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    sc.remove(old.object); old.dispose && old.dispose();
+    sc.add(car.object); this.showroomCar = car;
+    this.save();
   }
 
   updateShowroom(dt) {
@@ -211,7 +224,8 @@ export class Game {
 
   equip(e) {
     const P = this.profile;
-    if (!e.kind) { // team UI sends the whole car: { paint, wheels }
+    if (!e.kind) { // team UI sends the whole car: { paint, wheels, model }
+      if (e.model && e.model !== P.car.model) { P.car.model = e.model; this.rebuildShowroomCar(); }
       if (e.paint && e.paint !== P.car.paint) this.equip({ kind: 'paint', id: e.paint });
       if (e.wheels && e.wheels !== P.car.wheels) this.equip({ kind: 'wheel', id: e.wheels });
       return;
@@ -243,15 +257,26 @@ export class Game {
     let cfg;
     const P = this.profile;
     const avgUp = Math.round((P.upgrades.motor + P.upgrades.inverter + P.upgrades.tires + P.upgrades.battery) / 4);
+    const vm = sel.vehicleMode || (sel.mode === 'tutorial' ? 'flight' : P.settings.vehicleMode) || 'flight';
+    const flight = vm === 'flight';
+    const d = typeof sel.difficulty === 'string' ? ({ easy: 0, normal: 1, hard: 2 }[sel.difficulty] ?? 1) : (sel.difficulty ?? 1);
     if (sel.mode === 'career') {
       const ev = this.career.find((e) => e.id === sel.eventId);
       if (!ev) return;
       const wd = this.worlds.find((w) => w.id === ev.world) || {};
-      cfg = { mode: 'career', weather: wd.defaultWeather || 'clear', type: ev.type, worldId: ev.world, laps: ev.laps, opponents: ev.opponents, skill: ev.skill, aiUpgrade: ev.aiUpgrade, event: ev };
+      cfg = { mode: 'career', flight: ev.vehicleMode === 'flight', weather: wd.defaultWeather || 'clear', type: ev.type, worldId: ev.world, laps: ev.laps, opponents: ev.opponents, skill: ev.skill, aiUpgrade: ev.aiUpgrade, event: ev };
+    } else if (sel.mode === 'tutorial') {
+      cfg = { mode: 'tutorial', flight: true, type: 'tutorial', worldId: (this.worlds.find((w) => w.id === 'coast') || this.worlds[0]).id, laps: 1, opponents: 0, skill: 1, aiUpgrade: 0 };
+    } else if (flight && (sel.mode === 'free' || sel.mode === 'freeflight')) {
+      cfg = { mode: 'freeflight', flight: true, type: 'freeflight', worldId: sel.track || this.worlds[0].id, laps: 99, opponents: 0, skill: 1, aiUpgrade: 0 };
+    } else if (flight && sel.mode === 'timetrial') {
+      cfg = { mode: 'timetrial', flight: true, type: 'ringtrial', worldId: sel.track || this.worlds[0].id, laps: 3, opponents: 0, skill: 1, aiUpgrade: 0 };
+    } else if (flight && sel.mode !== 'multiplayer') {
+      cfg = { mode: 'quick', flight: true, type: 'ringrace', worldId: sel.track || this.worlds[0].id, laps: sel.laps || 3, opponents: sel.opponents ?? 5,
+        skill: [0.84, 0.93, 1.0][d] || 0.93, aiUpgrade: Math.min(4, Math.max(0, avgUp + d - 1)) };
     } else if (sel.mode === 'timetrial') {
       cfg = { mode: 'timetrial', type: 'free', worldId: sel.track, laps: 99, opponents: 0, skill: 1, aiUpgrade: 0 };
     } else {
-      const d = typeof sel.difficulty === 'string' ? ({ easy: 0, normal: 1, hard: 2 }[sel.difficulty] ?? 1) : (sel.difficulty ?? 1);
       cfg = { mode: 'quick', type: 'race', worldId: sel.track || this.worlds[0].id, laps: sel.laps || 3, opponents: sel.opponents ?? 5,
         skill: [0.82, 0.92, 1.0][d] || 0.92, aiUpgrade: Math.min(4, Math.max(0, avgUp + d - 1)) };
     }
@@ -265,7 +290,7 @@ export class Game {
     if (this.ui.setLoading) this.ui.setLoading(0.3, 'Loading track…'); else this.ui.toast && this.ui.toast('Loading track…');
     const go = () => {
       try {
-        const race = new Race(this, cfg);
+        const race = cfg.flight ? new FlightRace(this, cfg) : new Race(this, cfg);
         race.build();
         this.race = race;
         this.state = 'race';
@@ -363,6 +388,7 @@ export class Game {
     this.last = now;
     this.quality.frame(dt, this.state === 'race');
     this.inputState = this.input.poll(dt, this.profile.settings.steerSens);
+    this.flightInput = this.input.pollFlight(dt, !!this.profile.settings.invertPitch);
     if (!this.teamUI && this.input.wasPressed('Escape', 'KeyP', 'PadEscape')) {
       if (this.state === 'race') this.pause(); else if (this.state === 'paused') this.resume();
     }

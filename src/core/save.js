@@ -12,12 +12,14 @@ export function defaultProfile() {
     best: {},             // trackId -> best lap seconds
     ghosts: {},           // trackId -> packed ghost samples
     owned: { paints: ['pearlWhite', 'ultraRed', 'solidBlack'], wheels: ['aero'] },
-    car: { paint: 'ultraRed', wheels: 'aero' },
+    car: { model: 'rocket', paint: 'ultraRed', wheels: 'aero' },
+    tutorialDone: false,
     upgrades: { motor: 0, inverter: 0, tires: 0, battery: 0 },
     settings: {
       quality: 'auto', showFps: false, units: 'kmh', camera: 0,
       master: 0.8, music: 0.6, sfx: 0.9, steerSens: 1, tiltSteer: false,
       autoThrottle: false, vibration: true, assist: true,
+      vehicleMode: 'flight', flightAssist: true, invertPitch: false,
     },
     stats: { races: 0, wins: 0, km: 0, drift: 0 },
   };

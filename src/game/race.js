@@ -58,7 +58,7 @@ export class Race {
       const stats = isPlayer ? carStats(P.upgrades) : carStats({ motor: this.cfg.aiUpgrade, inverter: this.cfg.aiUpgrade, tires: this.cfg.aiUpgrade, battery: this.cfg.aiUpgrade }, 0.97 + 0.03 * this.cfg.skill);
       const v = new Vehicle(stats); v.gravityScale = gScale;
       const paint = isPlayer ? P.car.paint : paints[i % paints.length];
-      const model = g.mods.car.createRoadster({ paint, wheels: isPlayer ? P.car.wheels : wheels[i % wheels.length], quality: isPlayer ? q.carDetail : (q.id === 'ultra' ? 'high' : q.id === 'high' ? 'medium' : 'low') });
+      const model = g.mods.car.createRoadster({ model: isPlayer ? (P.car.model || 'rocket') : (i % 3 === 0 ? 'classic' : 'rocket'), paint, wheels: isPlayer ? P.car.wheels : wheels[i % wheels.length], quality: isPlayer ? q.carDetail : (q.id === 'ultra' ? 'high' : q.id === 'high' ? 'medium' : 'low') });
       model.object.traverse((o) => { if (o.isMesh) { o.castShadow = q.shadows && (isPlayer || q.id !== 'low'); } });
       this.scene.add(model.object);
       const row = Math.floor(i / 2), side = i % 2 ? 1 : -1;
