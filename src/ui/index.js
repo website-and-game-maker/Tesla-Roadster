@@ -929,6 +929,8 @@ export function createUI(opts = {}) {
 
   // ---------- toasts ----------
   function toast(text, { ms = 2400, icon = '' } = {}) {
+    // The same message twice at once (e.g. a race entered twice in a row) shows once.
+    if ([...toasts.children].some((n) => !n.classList.contains('out') && n.textContent === String(text))) return;
     const t = h(`<div class="ui-toast">${icon ? `<i>${esc(icon)}</i>` : ''}<span>${esc(text)}</span></div>`);
     toasts.appendChild(t);
     requestAnimationFrame(() => t.classList.add('in'));
