@@ -28,6 +28,7 @@ export class FlightRace {
     this.scene.environment = game.envMap;
     this.camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.2, 4000);
     this.time = 0; this.raceTime = 0; this.state = 'intro'; this.stateT = 0;
+    this.online = cfg.online || null; // multiplayer controller (src/multiplayer/online-race.js)
     this.message = ''; this.note = ''; this.noteT = 0; this.penalty = 0;
     this.cars = []; this.acc = 0; this.shake = 0;
     this.tut = { step: 0, turnT: 0, pitchT: 0, boostT: 0, hoverT: 0 };
@@ -45,6 +46,7 @@ export class FlightRace {
     for (const r of rings) if (r.s == null) r.s = this.course.locate(r.position).s;
     rings.sort((a, b) => a.s - b.s);
     this.rings = rings;
+    if (w.ringObject) w.ringObject.visible = false; // we draw our own animated rings
     this.colliders = w.colliders || [];
     this.ceiling = w.ceiling ?? 600;
     if (!w.sun) {
@@ -90,14 +92,14 @@ export class FlightRace {
     const fl = this.flyer = new Flyer(flightStats(P.upgrades));
     fl.gravity = (w.gravity || 9.81);
     fl.assist = P.settings.flightAssist !== false;
-    const sp = this.course.at(startS - (nAI > 0 ? 25 : 0), {});
+    const sp = this.course.at(startS - (nAI > 0 ? 18 + 12 * Math.ceil(nAI / 2) : 0), {}); // back of the grid, clear of the pack
     fl.place(new THREE.Vector3(sp.x, sp.y, sp.z), new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), sp.tan), 45);
     this.player = { isPlayer: true, name: P.name || 'You', model: mk(P.car.paint, P.car.wheels, q.carDetail, true), ringsHit: 0, nextRing: 0, lapStart: 0, lapTimes: [], bestLap: null, finished: false, finishTime: null, lastRing: -1, combo: 0, comboT: 0, courseI: -1, s: startS, thrust: fl.thrust };
     this.cars.push(this.player);
     // AI
     const aiStats = flightStats({ motor: cfg.aiUpgrade, inverter: cfg.aiUpgrade, tires: cfg.aiUpgrade, battery: cfg.aiUpgrade });
     for (let i = 0; i < nAI; i++) {
-      const ai = new AIFlyer(this.course, { skill: cfg.skill || 0.9, seed: i + 1, stats: aiStats });
+      const ai = new AIFlyer(this.course, { skill: (cfg.skill || 0.9) * (1.02 - 0.035 * i), seed: i + 1, stats: aiStats }); // spread the pack: a clear leader, a clear tail
       ai.start(startS - 12 * Math.floor(i / 2) + (i % 2 ? 0 : -6), (i % 2 ? 1 : -1) * (4 + (i % 3) * 2), ((i % 3) - 1) * 3);
       ai.speed = 45;
       const car = { isPlayer: false, ai, name: names[i % names.length], model: mk(paints[i % paints.length], wheels[i % wheels.length], q.id === 'ultra' ? 'high' : 'low', false), color: (g.mods.car.PAINTS.find((x) => x.id === paints[i % paints.length]) || {}).color, sTotal: ai.s, finished: false, finishTime: null };
@@ -109,9 +111,11 @@ export class FlightRace {
       this.targets = [t * 1.06, t * 1.16, t * 1.3];
     }
     const pts = []; for (let i = 0; i < this.course.n; i += 4) pts.push({ x: this.course.p[i].x, z: this.course.p[i].z });
+    this.mapPts = pts;
     g.ui.hud.setTrack && g.ui.hud.setTrack(pts, this.course.bounds);
     g.ui.hud.setMode && g.ui.hud.setMode('flight');
     if (cfg.type === 'tutorial') this.showTutorial();
+    if (this.online) this.online.onBuild(this);
     this.updateRingVisuals();
     this.syncModels(0);
     this.placeCamera(1, true);
@@ -141,7 +145,8 @@ export class FlightRace {
   update(dt) {
     this.time += dt; this.stateT += dt;
     const g = this.game;
-    if (this.state === 'intro') {
+    if (this.online && this.state !== 'finished') { this.online.preUpdate(this); if (this.state === 'race') this.raceTime += this.penalty; }
+    else if (this.state === 'intro') {
       if (this.stateT > 2 || g.input.wasPressed('Space', 'Enter') || this.cfg.type === 'tutorial' || this.cfg.type === 'freeflight') { this.state = 'countdown'; this.stateT = 0; this.lastCount = 4; }
     } else if (this.state === 'countdown') {
       const quick = this.cfg.type === 'tutorial' || this.cfg.type === 'freeflight';
@@ -260,7 +265,10 @@ export class FlightRace {
       }
       p.lapStart = this.raceTime;
     }
-    if (!p.finished && p.ringsHit >= this.laps * n + 1) this.finish();
+    if (!p.finished && p.ringsHit >= this.laps * n + 1) {
+      if (this.cfg.type === 'tutorial' && this.tut.step < TUTORIAL.length - 1) { this.laps++; this.flash('Finish the steps, then one more lap'); }
+      else this.finish();
+    }
     else if (idx === 0 && p.ringsHit === (this.laps - 1) * n + 1 && this.laps > 1 && this.laps < 99) this.flash('FINAL LAP');
     this.updateRingVisuals();
   }
@@ -272,15 +280,17 @@ export class FlightRace {
       else this.flash(`LAP ${lt.toFixed(3)}s`);
     }
     this.game.audio.ui('lap');
+    if (this.online) this.online.onLap(lt, this.player.lapTimes.length);
   }
 
   finish() {
     const p = this.player;
     p.finished = true; p.finishTime = this.raceTime;
     this.state = 'finished'; this.stateT = 0;
+    if (this.online) this.online.onFinish(this);
     this.message = this.cfg.type === 'tutorial' ? 'NICE FLYING!' : this.position() === 1 && this.cars.length > 1 ? 'VICTORY' : 'FINISH';
     this.game.audio.ui('lap');
-    if (this.cfg.type === 'tutorial') { this.game.profile.tutorialDone = true; this.game.save(); }
+    if (this.cfg.type === 'tutorial') { this.game.profile.tutorialDone = true; this.game.save(); this.game.ui.tutorial && this.game.ui.tutorial.complete && this.game.ui.tutorial.complete(); }
   }
 
   onCrash() {
@@ -349,6 +359,13 @@ export class FlightRace {
     this.tutText = text;
   }
 
+  /** Player pressed "Skip tutorial": keep flying, as free flight. */
+  skipTutorial() {
+    this.tut.step = TUTORIAL.length; this.tutText = '';
+    this.cfg = { ...this.cfg, type: 'freeflight' }; this.laps = 99;
+    this.flash('FREE FLIGHT');
+  }
+
   flash(t) { this.note = t; this.noteT = 2.2; }
   vibrate(ms) { if (this.game.profile.settings.vibration && navigator.vibrate && this.game.input.lastDevice === 'touch') navigator.vibrate(ms); }
 
@@ -385,7 +402,31 @@ export class FlightRace {
     const alt = fl.pos.y - this.groundAt(fl.pos.x, fl.pos.z);
     if (g.audio.updateFlight) g.audio.updateFlight({ airspeed: fl.airspeed, thrust: fl.thrust, boost: fl.boosting, altitude: alt, gForce: fl.gForce }, dt);
     else g.audio.update({ speed: fl.airspeed * 0.7, throttle: fl.thrust, brake: fl.hovering ? 1 : 0, slip: 0, surface: 'asphalt', boost: fl.boosting }, dt);
-    if (this.state === 'finished' && this.stateT > 3 && !this.ended) this.endRace();
+    if (this.state === 'finished' && this.stateT > 3 && !this.ended && !this.online) this.endRace();
+    if (this.online) this.online.postUpdate(this, dt);
+  }
+
+  /** Online grid slot: rows of two behind the first ring. */
+  onlineSpawn(slot) {
+    const s = this.rings[0].s - 70 - Math.floor(slot / 2) * 14, side = slot % 2 ? 1 : -1;
+    const sp = this.course.at(s, {});
+    const pos = new THREE.Vector3(sp.x, sp.y, sp.z).addScaledVector(sp.nrm, side * 5);
+    this.flyer.place(pos, new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), sp.tan), 45);
+    this.player.s = s;
+  }
+
+  /** What the multiplayer layer streams to the room each frame. */
+  onlineState() {
+    const fl = this.flyer, p = this.player, n = this.rings.length;
+    const q = p.model.object.quaternion;
+    return {
+      mode: 'flight',
+      pos: [fl.pos.x, fl.pos.y - 0.55, fl.pos.z], quat: [q.x, q.y, q.z, q.w], vel: [fl.vel.x, fl.vel.y, fl.vel.z],
+      speed: fl.airspeed, steer: 0, thrust: fl.crashed ? 0 : fl.thrust, ringIndex: p.nextRing,
+      lap: Math.max(0, Math.floor(Math.max(0, p.ringsHit - 1) / n)),
+      progress: n ? (Math.max(0, p.ringsHit - 1) % n) / n : 0,
+      fx: (fl.boosting ? 4 : 0),
+    };
   }
 
   syncModels(dt) {
@@ -468,13 +509,15 @@ export class FlightRace {
       message: this.message, note: this.note || (fl.hovering ? 'HOVER' : ''), extra,
       driftScore: 0, wrongWay: false,
       fps: this.game.quality.fps, qualityLabel: this.game.quality.preset.name,
-      minimap: { player: { x: fl.pos.x, z: fl.pos.z }, others },
+      minimap: { trackPoints: this.mapPts, player: { x: fl.pos.x, z: fl.pos.z, rot: Math.atan2(fl.vel.x, fl.vel.z) }, others: [...others, { x: this.rings[p.nextRing].position.x, z: this.rings[p.nextRing].position.z, color: '#35e8ff' }] },
+      ...(this.online ? this.online.hud(this) : {}),
     };
   }
 
   endRace() {
     if (this.ended) return;
     this.ended = true;
+    if (this.online) { this.game.onRaceEnd({ ...this.online.result(this), type: 'ringrace', penalty: this.penalty }); return; }
     const p = this.player, order = this.order();
     this.game.onRaceEnd({
       type: this.cfg.type, position: order.indexOf(p) + 1, racers: this.cars.length,
@@ -488,5 +531,6 @@ export class FlightRace {
     for (const c of this.cars) { this.scene.remove(c.model.object); c.model.dispose && c.model.dispose(); }
     for (const r of this.rings) this.scene.remove(r.mesh);
     this.world.dispose && this.world.dispose();
+    if (this.online) this.online.dispose();
   }
 }

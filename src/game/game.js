@@ -11,6 +11,7 @@ import { buildCareer, buildFlightCareer, totalStars, starsFor, EVENT_TYPES, UPGR
 import { Race } from './race.js';
 import { FlightRace } from './flightRace.js';
 import { attachMultiplayer } from '../multiplayer/game-bridge.js';
+import { attachAccounts } from './accounts.js';
 
 const fmt = (t) => { if (t == null) return '--'; const m = Math.floor(t / 60); return `${m}:${(t - m * 60).toFixed(3).padStart(6, '0')}`; };
 const costOf = (list, id) => { const i = list.findIndex((x) => x.id === id); const it = list[i]; return it && it.cost != null ? it.cost : (i < 3 ? 0 : 400 * i); };
@@ -53,6 +54,7 @@ export class Game {
     if (this.mods.multiplayer) {
       try { this.online = attachMultiplayer(this, THREE); } catch (e) { console.error('[game] multiplayer failed to start', e); }
     }
+    attachAccounts(this).catch((e) => console.error('[game] accounts failed to start', e));
     this.applyPreset(this.quality.preset);
     this.inputState = this.input.state;
     this.state = 'menu';
@@ -70,7 +72,7 @@ export class Game {
     const opts = {
       root: document.body, THREE,
       settings: this.profile.settings,
-      tracks: this.worlds.map((w) => ({ id: w.id, name: w.name, desc: w.description, description: w.description, unlock: w.unlock ?? w.unlockStars ?? 0 })),
+      tracks: this.worlds.map((w) => ({ id: w.id, name: w.name, desc: w.description, description: w.description, unlock: w.unlock ?? w.unlockStars ?? 0, modes: w.modes })),
       modes: [{ id: 'career', name: 'Career' }, { id: 'quick', name: 'Quick Race' }, { id: 'timetrial', name: 'Time Trial' }, { id: 'multiplayer', name: 'Multiplayer' }],
       paints: car.PAINTS.map((p) => ({ ...p, cost: costOf(car.PAINTS, p.id), price: costOf(car.PAINTS, p.id) })),
       wheels: car.WHEELS.map((w) => ({ ...w, cost: costOf(car.WHEELS, w.id), price: costOf(car.WHEELS, w.id) })),
@@ -114,6 +116,10 @@ export class Game {
     ui.on('equip', (p) => this.equip(p));
     ui.on('preview', (p) => this.preview(p));
     ui.on('reset', () => { this.profile = resetProfile(); this.save(); this.pushProfile(); this.showroomCar.setPaint(this.profile.car.paint); this.ui.toast('Progress reset'); });
+    ui.on('tutorial', (t) => {
+      if (t && (t.action === 'skip' || t.action === 'complete')) { this.profile.tutorialDone = true; this.save(); }
+      if (t && t.action === 'skip' && this.race && this.lastCfg && this.lastCfg.mode === 'tutorial') this.race.skipTutorial && this.race.skipTutorial();
+    });
     ui.on('screen', (s) => { this.showroomView = s === 'garage' ? 'garage' : 'menu'; });
     if (ui.input && this.input.setExternal) {
       this.input.setExternal(() => (typeof ui.input.read === 'function' ? ui.input.read(1 / 60) : ui.input));
@@ -273,13 +279,16 @@ export class Game {
       cfg = { mode: 'timetrial', flight: true, type: 'ringtrial', worldId: sel.track || this.worlds[0].id, laps: 3, opponents: 0, skill: 1, aiUpgrade: 0 };
     } else if (flight && sel.mode !== 'multiplayer') {
       cfg = { mode: 'quick', flight: true, type: 'ringrace', worldId: sel.track || this.worlds[0].id, laps: sel.laps || 3, opponents: sel.opponents ?? 5,
-        skill: [0.84, 0.93, 1.0][d] || 0.93, aiUpgrade: Math.min(4, Math.max(0, avgUp + d - 1)) };
+        skill: [0.76, 0.86, 0.95][d] || 0.86, aiUpgrade: Math.min(4, Math.max(0, avgUp + d - 1)) };
     } else if (sel.mode === 'timetrial') {
       cfg = { mode: 'timetrial', type: 'free', worldId: sel.track, laps: 99, opponents: 0, skill: 1, aiUpgrade: 0 };
     } else {
       cfg = { mode: 'quick', type: 'race', worldId: sel.track || this.worlds[0].id, laps: sel.laps || 3, opponents: sel.opponents ?? 5,
         skill: [0.82, 0.92, 1.0][d] || 0.92, aiUpgrade: Math.min(4, Math.max(0, avgUp + d - 1)) };
     }
+    const wd = this.worlds.find((w) => w.id === cfg.worldId);
+    if (!wd) cfg.worldId = this.worlds[0].id;
+    if (!cfg.flight && wd && wd.modes && !wd.modes.includes('ground')) cfg.worldId = (this.worlds.find((w) => !w.modes || w.modes.includes('ground')) || this.worlds[0]).id;
     this.lastCfg = cfg;
     this.launch(cfg);
   }

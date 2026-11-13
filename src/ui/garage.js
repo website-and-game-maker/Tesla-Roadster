@@ -64,7 +64,7 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
   };
   // Orbit camera: yaw/pitch/distance follow targets. Each shot sets defaults; user input
   // (drag, pinch, wheel) overrides them until the next shot change.
-  const PITCH_MIN = 0.03, PITCH_MAX = 1.25, DIST_MIN = 3.6, DIST_MAX = 14;
+  const PITCH_MIN = 0.03, PITCH_MAX = 1.05, DIST_MIN = 3.6, DIST_MAX = 14;
   const shotPitch = (sh) => Math.atan2(sh.h - sh.look[1], sh.dist);
   let shot = shots.menu, camYaw = 0.9, camYawVel = 0, camPitchVel = 0;
   let camPitch = shotPitch(shot), camDist = shot.dist;

@@ -66,7 +66,7 @@ export function buildFlightCareer(worlds) {
         name: last ? 'Sky Grand Final' : EVENT_TYPES[type].name,
         laps: type === 'ringtrial' ? 2 : (last ? 3 : 2),
         opponents: type === 'ringrace' ? Math.min(7, 3 + wi) : 0,
-        skill: Math.min(1.03, 0.82 + tier * 0.02 + (last ? 0.04 : 0)),
+        skill: Math.min(1.03, 0.74 + tier * 0.02 + (last ? 0.04 : 0)),
         aiUpgrade: Math.min(3, Math.floor(tier / 4)),
         reward: 500 + tier * 150,
         unlockStars: wi === 0 ? 0 : Math.round(wi * 5.5 * (1 + wi * 0.1)),

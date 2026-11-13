@@ -112,6 +112,7 @@ export class Race {
 
     // minimap
     const pts = []; for (let i = 0; i < this.track.n; i += 4) pts.push({ x: this.track.px[i], z: this.track.pz[i] });
+    this.mapPts = pts;
     g.ui.hud.setTrack && g.ui.hud.setTrack(pts, this.track.bounds);
 
     this.camera.far = q.drawDist * 1.6;
@@ -468,7 +469,7 @@ export class Race {
       wrongWay: p.wrongT > 1.2,
       ghostDelta: this.ghostDelta,
       fps: this.game.quality.fps, qualityLabel: this.game.quality.preset.name,
-      minimap: { player: { x: v.x, z: v.z, rot: v.yaw }, others },
+      minimap: { trackPoints: this.mapPts, player: { x: v.x, z: v.z, rot: v.yaw }, others },
     };
   }
 

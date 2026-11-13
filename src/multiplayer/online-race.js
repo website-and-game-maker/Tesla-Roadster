@@ -43,6 +43,13 @@ export class OnlineRace {
     const s = this.mp.session;
     const racers = (s?.room?.players || []).filter((p) => !p.spectator);
     const slot = Math.max(0, racers.findIndex((p) => p.id === s?.selfId));
+    this.racers = racers.length;
+    if (typeof race.onlineSpawn === 'function') race.onlineSpawn(slot); // flight: the race places itself
+    else this.placeOnGrid(race, slot);
+    this.makeRemotes(race);
+  }
+
+  placeOnGrid(race, slot) {
     const row = Math.floor(slot / 2);
     const side = slot % 2 ? 1 : -1;
     const tr = race.track;
@@ -51,8 +58,9 @@ export class OnlineRace {
     c.v.place(p.x, p.y, p.z, p.yaw);
     tr.locate(p.x, p.z, -1, c.info);
     c.prevDist = c.info.dist;
-    this.racers = racers.length;
+  }
 
+  makeRemotes(race) {
     this.remote = new RemoteCars({
       THREE: this.THREE,
       scene: race.scene,
@@ -165,7 +173,7 @@ export class OnlineRace {
       racers: rows.length || this.racers || 1,
       bestLap: c.bestLap,
       totalTime: me?.totalMs != null ? me.totalMs / 1000 : c.finishTime,
-      driftScore: Math.round(race.drift.score),
+      driftScore: Math.round(race.drift?.score || 0),
       dnf: !!me?.dnf,
       table: rows.map((r) => ({ pos: r.place, name: r.name, me: r.id === s?.selfId, time: r.dnf ? 'DNF' : fmt(r.totalMs) })),
     };

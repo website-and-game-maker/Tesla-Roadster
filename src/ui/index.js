@@ -258,7 +258,9 @@ export function createUI(opts = {}) {
   function renderSetup() {
     setupEl.querySelector('[data-bind=setupTitle]').textContent = setup.mode === 'timetrial' ? 'Time Trial' : 'Quick Race';
     setupEl.querySelectorAll('[data-only=quick]').forEach((r) => { r.style.display = setup.mode === 'quick' ? '' : 'none'; });
-    setupEl.querySelector('.su-tracks').innerHTML = tracks.map((t, i) => `
+    const usable = tracks.filter((t) => !t.modes || t.modes.includes(settings.vehicleMode || 'flight'));
+    if (usable.length && !usable.some((t) => t.id === setup.track)) setup.track = usable[0].id;
+    setupEl.querySelector('.su-tracks').innerHTML = usable.map((t, i) => `
       <button class="ui-card su-track${t.id === setup.track ? ' sel' : ''}" data-track="${esc(t.id)}" style="--i:${i}">
         <div class="su-thumb" style="${t.thumb ? `background-image:url('${esc(t.thumb)}')` : `--h:${(i * 67 + 200) % 360}`}"></div>
         <b>${esc(t.name)}</b><p>${esc(t.desc || '')}</p>

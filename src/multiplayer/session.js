@@ -267,6 +267,7 @@ export class RaceSession extends Emitter {
     if (settings.trackId) s.trackId = String(settings.trackId).slice(0, 40);
     if (settings.laps) s.laps = Math.max(1, Math.min(20, settings.laps | 0));
     if ('collisions' in settings) s.collisions = !!settings.collisions;
+    if (settings.vehicleMode === 'flight' || settings.vehicleMode === 'ground') s.vehicleMode = settings.vehicleMode;
     this.room.settings = s;
     this._broadcastLobby();
   }

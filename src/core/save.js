@@ -59,3 +59,6 @@ export function resetProfile() {
   try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
   return defaultProfile();
 }
+
+/** A profile from elsewhere (e.g. a cloud save), filled out with current defaults. */
+export function mergeProfile(data) { return merge(defaultProfile(), JSON.parse(JSON.stringify(data || {}))); }

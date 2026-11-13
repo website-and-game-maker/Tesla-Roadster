@@ -30,8 +30,9 @@ export function attachMultiplayer(game, THREE) {
   };
 
   const mp = new Multiplayer(profileFor(readName()));
-  const randomWorld = () => worlds[Math.floor(Math.random() * worlds.length)].id;
-  mp.setQuickMatchSettings({ trackId: randomWorld(), laps: 3 });
+  const randomWorld = () => worlds[Math.floor(Math.random() * worlds.length)].id; // every world has a flight course
+  const vmode = () => (game.profile?.settings?.vehicleMode === 'ground' ? 'ground' : 'flight');
+  mp.setQuickMatchSettings({ trackId: randomWorld(), laps: 3, vehicleMode: 'flight' });
 
   function readName() {
     try {
@@ -92,10 +93,10 @@ export function attachMultiplayer(game, THREE) {
       mp.setProfile(profileFor(name));
       try {
         if (action === 'quick') {
-          mp.setQuickMatchSettings({ trackId: randomWorld(), laps: 3 });
+          mp.setQuickMatchSettings({ trackId: randomWorld(), laps: 3, vehicleMode: 'flight' });
           await mp.quickMatch();
         } else if (action === 'create') {
-          await mp.hostRoom({ trackId: game.lastCfg?.worldId || worlds[0].id, laps: 3 });
+          await mp.hostRoom({ trackId: game.lastCfg?.worldId || worlds[0].id, laps: 3, vehicleMode: vmode() });
         } else if (action === 'join') {
           await mp.joinRoom(code);
         }
@@ -131,10 +132,13 @@ export function attachMultiplayer(game, THREE) {
   });
 
   mp.on('countdown', ({ settings }) => {
-    const worldId = worlds.some((w) => w.id === settings.trackId) ? settings.trackId : worlds[0].id;
+    const flight = settings.vehicleMode !== 'ground';
+    const ok = (w) => flight || !w.modes || w.modes.includes('ground');
+    const worldId = worlds.some((w) => w.id === settings.trackId && ok(w)) ? settings.trackId : (worlds.find(ok) || worlds[0]).id;
     const cfg = {
       mode: 'multiplayer',
-      type: 'race',
+      type: flight ? 'ringrace' : 'race',
+      flight,
       worldId,
       laps: settings.laps || 3,
       opponents: 0,
