@@ -121,8 +121,8 @@ export class Sfx {
     this.hornGain.gain.setTargetAtTime(on ? 0.12 : 0, this.ctx.currentTime, on ? 0.01 : 0.04);
   }
 
-  /** UI and game-event sounds. */
-  ui(name) {
+  /** UI and game-event sounds. `arg` is the combo count for 'ring'. */
+  ui(name, arg) {
     const t = this.ctx.currentTime + 0.005;
     const out = this.uiOut;
     const note = (m, dt, o = {}) =>
@@ -177,8 +177,100 @@ export class Sfx {
       case 'whoosh':
         this._noise(t, { freq: 900, Q: 0.7, level: 0.25, attack: 0.08, decay: 0.3, out });
         break;
+      case 'ring': this._ring(t, arg); break;
+      case 'nearMiss': this._nearMiss(t); break;
+      case 'transform': this._transform(t); break;
+      case 'stall': this._stall(t); break;
       default:
         break;
+    }
+  }
+
+  // Ring pass: a bell whose pitch climbs a pentatonic ladder with the combo,
+  // so a long streak plays an ascending melody.
+  _ring(t, combo = 1) {
+    const ladder = [0, 2, 4, 7, 9];
+    const n = Math.max(0, Math.min(14, (combo | 0) - 1));
+    const midi = 76 + Math.floor(n / 5) * 12 + ladder[n % 5];
+    const out = this.uiOut;
+    const f = mtof(midi);
+    this._tone(t, { freq: f, type: 'sine', level: 0.2, decay: 0.9, out, verb: 0.45 });
+    this._tone(t, { freq: f * 2.76, type: 'sine', level: 0.05, decay: 0.35, out, verb: 0.3 }); // bell overtone
+    this._tone(t + 0.045, { freq: f * 1.5, type: 'triangle', level: 0.07, decay: 0.5, out, verb: 0.4 });
+    if (combo >= 5) {
+      // Streak sparkle on top.
+      this._tone(t + 0.09, { freq: f * 2, type: 'sine', level: 0.06, decay: 0.6, out, verb: 0.5 });
+      this._noise(t, { type: 'highpass', freq: 8000, level: 0.03, attack: 0.02, decay: 0.4, out });
+    }
+  }
+
+  // Near miss: a fast doppler whoosh that sweeps across the stereo field.
+  _nearMiss(t) {
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const f = biquad(ctx, 'bandpass', 2400, 1.6);
+    f.frequency.setValueAtTime(2600, t);
+    f.frequency.exponentialRampToValueAtTime(380, t + 0.45);
+    const g = gain(ctx, 0);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.45, t + 0.12);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+    let node = src.connect(f).connect(g);
+    if (ctx.createStereoPanner) {
+      const pan = ctx.createStereoPanner();
+      const side = Math.random() < 0.5 ? -1 : 1;
+      pan.pan.setValueAtTime(-0.8 * side, t);
+      pan.pan.linearRampToValueAtTime(0.8 * side, t + 0.45);
+      node = node.connect(pan);
+    }
+    node.connect(this.sfxOut);
+    src.start(t, Math.random() * (this.noise.duration - 1));
+    src.stop(t + 0.6);
+    this._tone(t + 0.08, { freq: 300, to: 150, type: 'sawtooth', level: 0.05, decay: 0.3 });
+  }
+
+  // Road-to-flight transform: servos spin up, panels lock with clunks,
+  // fans ignite with a rising whoosh and a bright power-up chord.
+  _transform(t) {
+    const ctx = this.ctx;
+    // Servo whir.
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(140, t);
+    o.frequency.exponentialRampToValueAtTime(820, t + 0.75);
+    const bp = biquad(ctx, 'bandpass', 1200, 3);
+    const vib = ctx.createOscillator();
+    vib.frequency.value = 38;
+    const vibG = gain(ctx, 25);
+    vib.connect(vibG).connect(o.frequency);
+    const g = gain(ctx, 0);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.09, t + 0.08);
+    g.gain.setValueAtTime(0.09, t + 0.65);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.85);
+    o.connect(bp).connect(g).connect(this.sfxOut);
+    o.start(t); vib.start(t); o.stop(t + 0.9); vib.stop(t + 0.9);
+    // Mechanical clunks as panels lock.
+    for (const dt of [0.12, 0.42, 0.78]) {
+      this._tone(t + dt, { freq: 120, to: 55, level: 0.3, decay: 0.12 });
+      this._noise(t + dt, { freq: 2200, Q: 1.5, level: 0.12, decay: 0.05 });
+    }
+    // Fan ignition whoosh.
+    this._noise(t + 0.6, { type: 'lowpass', freq: 900, level: 0.3, attack: 0.35, decay: 0.5 });
+    // Power-up chord.
+    for (const m of [69, 76, 81]) {
+      this._tone(t + 0.85, { freq: mtof(m), type: 'triangle', level: 0.07, decay: 0.8, out: this.uiOut, verb: 0.35 });
+    }
+  }
+
+  // Stall warning: two urgent beeps, never more than one pattern at a time.
+  _stall(t) {
+    if (t - (this.lastStall || 0) < 0.6) return;
+    this.lastStall = t;
+    for (const dt of [0, 0.16]) {
+      this._tone(t + dt, { freq: 1040, type: 'square', level: 0.08, attack: 0.004, decay: 0.1, out: this.uiOut });
+      this._tone(t + dt, { freq: 1040, type: 'sine', level: 0.14, attack: 0.004, decay: 0.1, out: this.uiOut });
     }
   }
 }

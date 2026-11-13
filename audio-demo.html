@@ -49,10 +49,22 @@
   </section>
   <section>
     <h2>Music</h2>
-    <button data-song="menu">Garage (menu)</button><button data-song="race">Race</button><button data-song="results">Results</button><button id="stop">Stop</button>
+    <button data-song="menu">Garage (menu)</button><button data-song="race">Race</button><button data-song="flight">Flight</button><button data-song="results">Results</button><button id="stop">Stop</button>
     <label class="row">Intensity <input id="intensity" type="range" min="0" max="1" step="0.01" value="0.5"><span id="intensityV">0.5</span></label>
     <h2 style="margin-top:16px">Volume settings</h2>
     <div id="settings"></div>
+  </section>
+  <section>
+    <h2>Flight</h2>
+    <label><input id="flying" type="checkbox"> Flying (uses updateFlight)</label>
+    <button id="autoFly">Auto-fly</button>
+    <label class="row">Airspeed <input id="airspeed" type="range" min="0" max="160" step="1" value="60"><span id="airspeedV">60</span></label>
+    <label class="row">Thrust <input id="thrust" type="range" min="0" max="1" step="0.01" value="0.5"><span id="thrustV">0.5</span></label>
+    <label class="row">Altitude <input id="altitude" type="range" min="0" max="3000" step="10" value="300"><span id="altitudeV">300</span></label>
+    <label class="row">G-force <input id="gForce" type="range" min="-2" max="8" step="0.1" value="1"><span id="gForceV">1</span></label>
+    <label><input id="afterburner" type="checkbox"> Afterburner</label>
+    <div><button id="ring">Ring (combo <span id="comboV">1</span>)</button><button id="resetCombo">Reset combo</button>
+    <button data-fx="nearMiss">Near miss</button><button data-fx="transform">Transform</button><button data-fx="stall">Stall</button></div>
   </section>
 </div>
 <script type="module">
@@ -86,6 +98,17 @@ for (const n of ['hover', 'click', 'confirm', 'back', 'error', 'countdown', 'go'
 }
 mountAudioSettings($('settings'), audio);
 
+// Flight controls
+const fl = { airspeed: 60, thrust: 0.5, altitude: 300, gForce: 1, boost: false };
+let autoFly = false, flyT = 0, combo = 1;
+for (const k of ['airspeed', 'thrust', 'altitude', 'gForce']) $(k).addEventListener('input', () => { fl[k] = +$(k).value; autoFly = false; });
+$('afterburner').onchange = () => (fl.boost = $('afterburner').checked);
+$('flying').onchange = () => { if ($('flying').checked) audio.ui('transform'); };
+$('autoFly').onclick = () => { audio.unlock(); $('flying').checked = true; autoFly = true; flyT = 0; audio.ui('transform'); audio.music.play('flight'); };
+$('ring').onclick = () => { audio.ui('ring', combo); combo++; $('comboV').textContent = combo; };
+$('resetCombo').onclick = () => { combo = 1; $('comboV').textContent = combo; };
+document.querySelectorAll('[data-fx]').forEach((b) => (b.onclick = () => audio.ui(b.dataset.fx)));
+
 const keys = {};
 addEventListener('keydown', (e) => { keys[e.code] = true; if (e.code === 'KeyH') audio.horn(true); });
 addEventListener('keyup', (e) => { keys[e.code] = false; if (e.code === 'KeyH') audio.horn(false); });
@@ -115,7 +138,29 @@ function frame(now) {
     audio.music.setIntensity(0.4 + 0.6 * Math.min(1, state.speed / 70));
   }
   if (scraping) audio.scrape(0.8);
-  audio.update(state, dt);
+  if ($('flying').checked) {
+    if (autoFly) {
+      // Scripted sortie: climb, cruise, afterburner dive, hard pull-up, ring run.
+      flyT += dt;
+      const p = flyT % 20;
+      fl.thrust = p < 5 ? 1 : p < 10 ? 0.55 : p < 13 ? 1 : 0.7;
+      fl.boost = p >= 10 && p < 13;
+      fl.airspeed += ((fl.boost ? 150 : 40 + fl.thrust * 70) - fl.airspeed) * dt * 0.6;
+      fl.altitude = Math.max(0, fl.altitude + (p < 5 ? 120 : p < 10 ? 0 : p < 13 ? -250 : 20) * dt);
+      fl.gForce = p >= 13 && p < 14.5 ? 5.5 : 1;
+      const prev = Math.floor((p - dt) * 2), now2 = Math.floor(p * 2);
+      if (p >= 15 && now2 !== prev) { audio.ui('ring', combo); combo++; $('comboV').textContent = combo; }
+      if (p < dt) { combo = 1; }
+      for (const k of ['airspeed', 'thrust', 'altitude', 'gForce']) $(k).value = fl[k];
+      $('afterburner').checked = fl.boost;
+      audio.music.setIntensity(0.5 + 0.5 * Math.min(1, fl.airspeed / 140));
+    }
+    if (fl.airspeed < 25) audio.ui('stall');
+    audio.updateFlight(fl, dt);
+    for (const k of ['airspeed', 'thrust', 'altitude', 'gForce']) $(k + 'V').textContent = (+fl[k]).toFixed(k === 'thrust' || k === 'gForce' ? 2 : 0);
+  } else {
+    audio.update(state, dt);
+  }
   $('kmh').textContent = Math.round(state.speed * 3.6);
   for (const k of ['speed', 'throttle', 'brake', 'slip']) $(k + 'V').textContent = (+state[k]).toFixed(k === 'speed' ? 0 : 2);
   requestAnimationFrame(frame);
