@@ -13,7 +13,8 @@ import { buildTrackData, buildTrackMeshes, buildCheckpoints, buildGrid } from '.
 import { makeHeightFn, buildTerrain, buildWater } from './terrain.js';
 import { createSky } from './sky.js';
 import { createWeather, WEATHER } from './weather.js';
-import { scatterProps } from './props.js';
+import { scatterProps, box, sphere } from './props.js';
+import { buildColliderIndex, buildFlightCourse, buildRingObject, crossedRing, colliderDistance } from './flight.js';
 import { detailTexture, softDot } from './textures.js';
 
 import coast from './defs/coast.js';
@@ -23,8 +24,13 @@ import alpine from './defs/alpine.js';
 import launch from './defs/launch.js';
 import mars from './defs/mars.js';
 import moon from './defs/moon.js';
+import spires from './defs/spires.js';
+import canyon from './defs/canyon.js';
+import isles from './defs/isles.js';
 
-const DEFS = [coast, saltflats, city, alpine, launch, mars, moon];
+// Sky worlds (flight only) slot in between the ground worlds as the career
+// goes on, so every couple of worlds there is a pure flying showcase.
+const DEFS = [coast, saltflats, spires, city, alpine, canyon, launch, mars, isles, moon];
 
 const DEFAULT_SURFACES = {
   road: { grip: 1, rolling: 0.012 },
@@ -36,9 +42,29 @@ const DEFAULT_SURFACES = {
 export const WORLDS = DEFS.map((d, order) => {
   const curve = new THREE.CatmullRomCurve3(d.points.map(([x, z, y = 0]) => new THREE.Vector3(x, y, z)), true, 'centripetal');
   const length = curve.getLength();
-  const lapGold = length / d.goldSpeed;
-  const total = lapGold * d.laps;
+  const modes = d.modes || ['flight', 'ground'];
+  const groundOk = modes.includes('ground');
+  const lapGold = length / (d.goldSpeed || 40);
+  const total = lapGold * (d.laps || 3);
+  // Flight course length: the hand-made path, or roughly the road length
+  // plus the climbs and weaves of a generated path.
+  const f = d.flight || {};
+  const flightLength = f.points ? length : length * 1.08;
+  const flightLaps = f.laps ?? 2;
+  const flightLapGold = flightLength / (f.goldSpeed ?? 70);
   return {
+    modes,                        // ['flight', 'ground'] or ['flight'] for sky worlds
+    flight: {
+      laps: flightLaps,
+      lengthMeters: Math.round(flightLength),
+      ceiling: f.ceiling ?? 450,
+      par: {
+        gold: Math.round(flightLapGold * flightLaps),
+        silver: Math.round(flightLapGold * flightLaps * 1.12),
+        bronze: Math.round(flightLapGold * flightLaps * 1.28),
+        lapGold: Math.round(flightLapGold * 10) / 10,
+      },
+    },
     id: d.id,
     order,
     name: d.name,
@@ -46,17 +72,20 @@ export const WORLDS = DEFS.map((d, order) => {
     description: d.description,
     location: d.location,         // 'Earth' | 'Mars' | 'Moon'
     gravity: d.gravity,
-    laps: d.laps,
-    lengthMeters: Math.round(length),
-    unlock: d.unlock,             // total stars needed to open this world
-    unlockStars: d.unlock,
+    // Ground race data (null fields for flight-only sky worlds).
+    laps: groundOk ? d.laps : flightLaps,
+    lengthMeters: Math.round(groundOk ? length : flightLength),
+    // Total stars needed to open this world: each world offers up to 12
+    // (4 career events x 3 stars), and you need ~60% of what came before.
+    unlock: Math.round(order * 7.2),
+    unlockStars: Math.round(order * 7.2),
     // Medal targets in seconds for the full race (laps) and for one lap.
-    par: {
+    par: groundOk ? {
       gold: Math.round(total),
       silver: Math.round(total * 1.12),
       bronze: Math.round(total * 1.28),
       lapGold: Math.round(lapGold * 10) / 10,
-    },
+    } : null,
     weathers: d.weathers,
     defaultWeather: d.defaultWeather,
     defaultTime: d.defaultTime,
@@ -70,13 +99,14 @@ export function getWorldInfo(id) {
   return WORLDS.find((w) => w.id === id) || null;
 }
 
-// Stars earned for a finished race time (0..3).
-export function starsForTime(id, seconds) {
+// Stars earned for a finished race time (0..3). mode: 'ground' | 'flight'.
+export function starsForTime(id, seconds, mode = 'ground') {
   const w = getWorldInfo(id);
   if (!w || !Number.isFinite(seconds)) return 0;
-  if (seconds <= w.par.gold) return 3;
-  if (seconds <= w.par.silver) return 2;
-  if (seconds <= w.par.bronze) return 1;
+  const par = mode === 'flight' || !w.par ? w.flight.par : w.par;
+  if (seconds <= par.gold) return 3;
+  if (seconds <= par.silver) return 2;
+  if (seconds <= par.bronze) return 1;
   return 0;
 }
 
@@ -90,6 +120,8 @@ export function createWorld(id, opts = {}) {
   const { scene, renderer = null } = opts;
   if (!scene) throw new Error('createWorld needs { scene }');
   const quality = getQuality(opts.quality);
+  const modes = def.modes || ['flight', 'ground'];
+  const mode = modes.includes(opts.mode) ? opts.mode : modes[0];
   const root = new THREE.Group();
   root.name = `world-${def.id}`;
   scene.add(root);
@@ -112,18 +144,33 @@ export function createWorld(id, opts = {}) {
     root.add(water);
   }
 
-  // Road, kerbs, barriers, start gantry.
-  const trackGroup = buildTrackMeshes(track, def, { detailMap, terrainHeight: heightFn }, quality);
-  root.add(trackGroup);
-  const roadMat = trackGroup.getObjectByName('road').material;
+  // Road, kerbs, barriers, start gantry (ground worlds only; kept in flight
+  // mode too so the scenery looks the same).
+  let roadMat = null;
+  if (!def.noRoad) {
+    const trackGroup = buildTrackMeshes(track, def, { detailMap, terrainHeight: heightFn }, quality);
+    root.add(trackGroup);
+    roadMat = trackGroup.getObjectByName('road').material;
+  }
 
   // Scenery.
   const bounds = terrain.userData.bounds;
-  const props = scatterProps(def.props || [], { track, heightFn, quality, bounds, seed: def.seed });
+  const solidBounds = { minX: track.box.min.x - 1200, maxX: track.box.max.x + 1200, minZ: track.box.min.z - 1200, maxZ: track.box.max.z + 1200 };
+  const props = scatterProps(def.props || [], { track, heightFn, quality, bounds, solidBounds, seed: def.seed });
   root.add(props.group);
 
   const signCache = new Map();
+  const colliders = [...props.colliders];
+  const gates = [];
   const ctx = {
+    // Ask the flight course for a ring passing nearest to (x, y?, z).
+    gate: (x, y, z, radius) => gates.push({ x, y, z, radius }),
+    def,
+    noise,
+    // Landmarks register what the car can crash into.
+    collide: (...cs) => colliders.push(...cs),
+    box,
+    sphere,
     track,
     heightFn,
     quality,
@@ -153,7 +200,7 @@ export function createWorld(id, opts = {}) {
   const sky = createSky(def, scene, renderer, quality);
   root.add(sky.group);
   sky.setTime(opts.timeOfDay ?? def.defaultTime ?? 12);
-  const weather = createWeather(scene, quality, sky, { wettable: [roadMat] });
+  const weather = createWeather(scene, quality, sky, { wettable: roadMat ? [roadMat] : [] });
   const allowed = def.weathers || ['clear'];
   weather.set(allowed.includes(opts.weather) ? opts.weather : def.defaultWeather || 'clear');
 
@@ -182,6 +229,47 @@ export function createWorld(id, opts = {}) {
   let hint = -1;
   const camTarget = new THREE.Vector3();
 
+  const colliderIndex = buildColliderIndex(colliders);
+  const waterLevel = def.water ? def.water.level : -Infinity;
+  const groundHeight = (x, z) => {
+    if (!def.noRoad) {
+      const p = track.project(x, z, hint, projTmp);
+      hint = p.index;
+      if (Math.abs(p.lateral) <= track.wallHalfWidth + 1) {
+        // Matches the slight crown of the road mesh.
+        const a = Math.abs(p.lateral);
+        const crown = a < track.roadHalfWidth ? 0.03 * (1 - a / track.roadHalfWidth) : -0.02;
+        return p.height + crown;
+      }
+    }
+    return heightFn(x, z);
+  };
+  // In the air, water counts as ground too.
+  const flightGround = (x, z) => Math.max(groundHeight(x, z), waterLevel, def.flight?.floor ?? -Infinity);
+
+  let course = null;
+  let ringObj = null;
+  if (mode === 'flight') {
+    course = buildFlightCourse(def, { track, groundAt: flightGround, colliderIndex, gates });
+    ringObj = buildRingObject(course, quality);
+    ringObj.reset();
+    root.add(ringObj.mesh);
+  }
+  const flight = course ? {
+    // Closed 3D path through the air: t = 0 is the start, increasing t is forward.
+    flightCurve: course.curve,
+    flightLength: course.length,
+    // [{ index, position, quaternion (ring faces along the path), normal, radius, t, distance }]
+    rings: course.rings,
+    ceiling: course.ceiling,
+    flightLaps: course.laps,
+    // Ring colours: setNextRing(i) marks earlier rings passed and ring i as the target.
+    setNextRing: (i) => ringObj.setNext(i),
+    setRingState: (i, s) => ringObj.setState(i, s),
+    ringObject: ringObj.mesh,
+    crossedRing,
+  } : {};
+
   const world = {
     id: def.id,
     info: getWorldInfo(def.id),
@@ -189,13 +277,22 @@ export function createWorld(id, opts = {}) {
     object: root,
     sun: sky.sun,
     ambient: sky.hemi,
+    mode,
+    modes,
     gravity: def.gravity,
-    laps: def.laps,
+    laps: mode === 'flight' ? course.laps : def.laps,
+    ...flight,
+    // Everything solid the car can hit when flying: [{ type: 'box', min, max } | { type: 'sphere', center, radius }].
+    // The terrain itself is solid too: use getGroundHeight.
+    colliders,
+    queryColliders: (x, z, r = 0, out) => colliderIndex.query(x, z, r, out),
+    colliderDistance,
     trackCurve: track.curve,
     trackLength: track.length,
     roadHalfWidth: track.roadHalfWidth,
     wallHalfWidth: track.wallHalfWidth,
-    spawn,
+    spawn: course ? course.spawn : spawn,
+    groundSpawn: spawn,
     grid,
     checkpoints,
     // Pre-sampled centre line every ~2 m (Float32Array xyz), for minimaps and AI.
@@ -215,16 +312,9 @@ export function createWorld(id, opts = {}) {
 
     // Ground height under (x, z). On the road and run-off this is the exact
     // road surface; elsewhere it is the terrain.
+    // In flight mode water and cloud decks count as ground.
     getGroundHeight(x, z) {
-      const p = track.project(x, z, hint, projTmp);
-      hint = p.index;
-      if (Math.abs(p.lateral) <= track.wallHalfWidth + 1) {
-        // Matches the slight crown of the road mesh.
-        const a = Math.abs(p.lateral);
-        const crown = a < track.roadHalfWidth ? 0.03 * (1 - a / track.roadHalfWidth) : -0.02;
-        return p.height + crown;
-      }
-      return heightFn(x, z);
+      return mode === 'flight' ? flightGround(x, z) : groundHeight(x, z);
     },
 
     // Surface under (x, z): { type, grip, rolling }. Grip already includes weather.
@@ -270,6 +360,7 @@ export function createWorld(id, opts = {}) {
       sky.update(dt, focus, camera);
       weather.update(dt, camera || (focus ? { position: focus } : null));
       if (water) water.userData.update(dt);
+      if (ringObj) ringObj.update(t);
       applyNight();
       for (const fn of updaters) fn(dt, sky.state.night, t);
     },

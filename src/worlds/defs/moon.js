@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { fbm, ridged } from '../noise.js';
-import { ramp, std, plant } from './util.js';
+import { ramp, std, plant, solid } from './util.js';
 
 // World 7: the Moon. 1.62 m/s² gravity, black sky, Earth hanging over the
 // horizon. The finale: every crest is a long, floaty jump.
@@ -14,13 +14,13 @@ export default {
   gravity: 1.62,
   laps: 3,
   goldSpeed: 32,
-  unlock: 69, // total stars needed (matches the career's 4 events x 3 stars per world)
   music: 'space',
   points: [
     [0, 0, 0], [60, 260, 12], [220, 440, 26], [460, 480, 20], [640, 360, 6],
     [660, 120, 14], [560, -80, 28], [600, -300, 18], [440, -480, 6], [180, -460, 16],
     [20, -300, 8], [-30, -140, 2],
   ],
+  flight: { altitude: 30, swing: 70, waves: 3, weave: 7, ringRadius: 11, ceiling: 600, goldSpeed: 60 },
   roadWidth: 16,
   runoff: 5,
   roadStyle: 'lunar',
@@ -95,6 +95,7 @@ export default {
     flag.position.set(-21.2, 2.5, 6);
     base.add(pole, flag);
     g.add(plant(base, ctx, -90, 120));
+    solid(ctx, -90, 120, 24, 24, 9);
     ctx.glow(mod, 0.5);
     return g;
   },

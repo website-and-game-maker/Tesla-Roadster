@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { fbm, smoothstep } from '../noise.js';
-import { roundedPolygon, mixHex, std, plant } from './util.js';
+import { roundedPolygon, mixHex, std, plant, solid } from './util.js';
 
 // World 3: a downtown street circuit at night. Tight 90-degree corners,
 // wet asphalt reflecting neon, glass towers lit window by window.
@@ -14,12 +14,12 @@ export default {
   gravity: 9.81,
   laps: 3,
   goldSpeed: 33,
-  unlock: 17, // total stars needed (matches the career's 4 events x 3 stars per world)
   music: 'synthwave',
   points: roundedPolygon([
     [0, -200, 0], [0, 400, 2], [-200, 400, 4], [-200, 700, 8], [200, 700, 9],
     [200, 550, 7], [450, 550, 5], [450, 150, 2], [250, 150, 1], [250, -200, 0],
   ], 32, 50),
+  flight: { altitude: 30, swing: 50, waves: 5, weave: 5, weaveWaves: 7, ceiling: 380, goldSpeed: 60, keys: [{ u: 0.25, alt: 7, width: 0.025 }, { u: 0.62, alt: 7, width: 0.025 }] },
   roadWidth: 15,
   runoff: 2.5,
   roadStyle: 'city',
@@ -67,6 +67,7 @@ export default {
     beacon.position.y = 321;
     spire.add(body, needle, beacon);
     g.add(plant(spire, ctx, 125, 300));
+    solid(ctx, 125, 300, 18, 18, 324);
     ctx.onUpdate((dt, night, t) => {
       beacon.visible = Math.sin(t * 3) > 0;
     });
@@ -78,6 +79,7 @@ export default {
     legs.position.y = 9;
     bb.add(panel, legs);
     g.add(plant(bb, ctx, 300, 600, Math.PI));
+    solid(ctx, 300, 600, 20, 1, 30);
     return g;
   },
 };
