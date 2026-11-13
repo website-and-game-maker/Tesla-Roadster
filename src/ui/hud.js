@@ -29,7 +29,7 @@ export function createHUD(root, getSettings) {
       <canvas class="h-dial" width="440" height="440"></canvas>
       <div class="h-readout"><b class="h-speed">0</b><span class="h-unit">KM/H</span><i class="h-gear">D</i></div>
       <div class="h-bars">
-        <div class="h-bar h-thrust"><label>THRUST</label><div><i></i></div></div>
+        <div class="h-bar h-thrust"><label>JETS</label><div><i></i></div></div>
         <div class="h-bar h-boost"><label>BOOST</label><div><i></i></div></div>
         <div class="h-bar h-batt"><label>BATTERY</label><div><i></i></div></div>
       </div>
