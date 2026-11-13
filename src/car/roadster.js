@@ -36,7 +36,7 @@ export { PAINTS, WHEELS, CALIPERS, DIM };
 const LEVELS = {
   high: { rings: 130, segs: 40, details: true, cabRings: 40, cabSegs: 16, tube: 8 },
   medium: { rings: 70, segs: 24, details: true, cabRings: 22, cabSegs: 10, tube: 5 },
-  low: { rings: 34, segs: 13, details: false, cabRings: 10, cabSegs: 5, tube: 3 },
+  low: { rings: 46, segs: 16, details: true, cabRings: 12, cabSegs: 6, tube: 3 },
 };
 const LOD_DIST = { high: 0, medium: 16, low: 45 };
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -84,35 +84,44 @@ function levelGeometry(model, q) {
   g.wellWalls = [DIM.front, DIM.rear].map((a) => {
     const R = a.r + 0.05;
     const sh = new THREE.Shape();
-    sh.moveTo(-R, 0.08);
-    sh.lineTo(R, 0.08);
+    // Starts above the body's underside so it never shows below the sills.
+    sh.moveTo(-R, 0.17);
+    sh.lineTo(R, 0.17);
     sh.lineTo(R, a.r);
     sh.absarc(0, a.r, R, 0, Math.PI, false);
     sh.closePath();
     return new THREE.ShapeGeometry(sh, q === 'low' ? 6 : 16).rotateY(Math.PI / 2);
   });
 
-  if (q !== 'low') {
+  {
+    const lo = q === 'low';
     // Window frame / targa edges.
-    g.frames = both(tube(cabinLine(spec.frame[0], spec.frame[1], spec.frame[2], 30), 0.011, 50));
+    g.frames = both(tube(cabinLine(spec.frame[0], spec.frame[1], spec.frame[2], lo ? 12 : 30), 0.011, lo ? 16 : 50));
     // Spoiler: thin painted blade over the rear deck.
     if (spec.spoiler) {
       const sp = skinPatch(spec.spoiler[0], spec.spoiler[1], q === 'high' ? 10 : 5, (t, v) => 1.0 + v * (Math.PI / 2 - 1.0), q === 'high' ? 10 : 5, 0.004);
       g.spoiler = both(white(sp));
     }
-    g.bezel = both(headlampGeometry(q === 'high' ? 18 : 8, 2, 0.012));
-    // Mirrors.
-    const cap = new THREE.SphereGeometry(0.075, q === 'high' ? 20 : 10, q === 'high' ? 12 : 6);
-    cap.scale(1.35, 0.7, 0.8);
+    g.bezel = both(headlampGeometry(q === 'high' ? 18 : lo ? 6 : 8, 2, 0.012));
+    // Camera pods instead of mirrors: slim aero teardrops on thin stalks.
+    const cap = new THREE.CapsuleGeometry(0.03, 0.11, 3, q === 'high' ? 12 : 6);
+    cap.rotateZ(Math.PI / 2).scale(1, 0.85, 1.25);
     g.mirror = white(cap);
-    g.mirrorStalk = new THREE.BoxGeometry(0.11, 0.018, 0.04);
+    g.mirrorStalk = new THREE.BoxGeometry(0.12, 0.012, 0.035);
+    g.camLens = new THREE.CircleGeometry(0.014, 10).rotateY(Math.PI);
+    // Speedster fairings / dorsal spine on the rear deck.
+    const fair = new THREE.SphereGeometry(1, q === 'high' ? 24 : 10, q === 'high' ? 14 : 6, 0, Math.PI * 2, 0, Math.PI / 2);
+    g.fairing = white(fair);
     // Interior.
     g.seatBase = new THREE.BoxGeometry(0.48, 0.12, 0.5);
     // Rounded shell backrest with an integrated headrest.
     g.seatBack = new THREE.CapsuleGeometry(0.2, 0.26, 4, q === 'high' ? 14 : 8).scale(1.15, 1, 0.3);
     g.headrest = new THREE.CapsuleGeometry(0.1, 0.04, 3, q === 'high' ? 12 : 6).scale(1.2, 1, 0.5);
     g.dash = new THREE.BoxGeometry(1.24, 0.12, 0.3);
-    g.wheel = new THREE.TorusGeometry(0.165, 0.017, 8, q === 'high' ? 32 : 16);
+    g.wheel = spec.yoke
+      ? new THREE.TorusGeometry(0.15, 0.019, 8, q === 'high' ? 24 : 10, Math.PI * 1.15)
+      : new THREE.TorusGeometry(0.165, 0.017, 8, q === 'high' ? 32 : 16);
+    g.console = new THREE.BoxGeometry(0.2, 0.16, 0.75);
     g.screen = new THREE.BoxGeometry(0.34, 0.2, 0.015);
     g.fin = new THREE.BoxGeometry(0.012, 0.09, 0.32);
     if (q === 'high') {
@@ -175,7 +184,7 @@ function buildLevel(model, q, mats, wheelSpec) {
   }
 
   let spoiler = null;
-  if (q !== 'low') {
+  {
     g.frames.forEach((f) => root.add(mesh(f, mats.gloss)));
     g.bezel.forEach((b) => root.add(mesh(b, mats.bezel, false)));
     (g.shut || []).forEach((s) => root.add(mesh(s, mats.trim, false)));
@@ -192,14 +201,24 @@ function buildLevel(model, q, mats, wheelSpec) {
       root.add(spoiler);
     }
 
+    const mp = shape.spec.mirror || [0.86, 0.9, 0.5];
     for (const s of [1, -1]) {
       const cap = mesh(g.mirror, mats.paint);
-      cap.position.set(0.9 * s, 0.9, 0.5);
+      cap.position.set(mp[0] * s, mp[1], mp[2]);
       root.add(cap);
+      const lens = mesh(g.camLens, mats.gloss, false);
+      lens.position.set(mp[0] * s + 0.03 * s, mp[1], mp[2] - 0.075);
+      root.add(lens);
       const stalk = mesh(g.mirrorStalk, mats.gloss);
-      stalk.position.set(0.8 * s, 0.86, 0.5);
+      stalk.position.set((mp[0] - 0.09) * s, mp[1] - 0.03, mp[2] + 0.01);
       stalk.rotation.z = 0.35 * s;
       root.add(stalk);
+    }
+    for (const f of shape.spec.fairings || []) {
+      const m = mesh(g.fairing, mats.paint);
+      m.position.set(f.x, shape.bodyTopAt(f.z, Math.abs(f.x)) - 0.03, f.z);
+      m.scale.set(f.w, f.h, f.l);
+      root.add(m);
     }
 
     // Diffuser fins.
@@ -222,6 +241,9 @@ function buildLevel(model, q, mats, wheelSpec) {
       head.rotation.x = -0.22;
       root.add(base, back, head);
     }
+    const cons = mesh(g.console, mats.carbon);
+    cons.position.set(0, floor + 0.08, 0.0);
+    root.add(cons);
     const dash = mesh(g.dash, mats.interior);
     dash.position.set(0, 0.72, 0.42);
     const screen = mesh(g.screen, mats.gloss);
@@ -230,6 +252,7 @@ function buildLevel(model, q, mats, wheelSpec) {
     const wheel = mesh(g.wheel, mats.interior);
     wheel.position.set(0.34, 0.8, 0.2);
     wheel.rotation.x = -0.35;
+    if (shape.spec.yoke) wheel.rotation.z = Math.PI * 1.075 + Math.PI; // open at the top
     root.add(dash, screen, wheel);
   }
 
