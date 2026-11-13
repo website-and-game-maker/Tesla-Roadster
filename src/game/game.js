@@ -81,7 +81,9 @@ export class Game {
       ],
       paints: car.PAINTS.map((p) => ({ ...p, cost: costOf(car.PAINTS, p.id), price: costOf(car.PAINTS, p.id) })),
       wheels: car.WHEELS.map((w) => ({ ...w, cost: costOf(car.WHEELS, w.id), price: costOf(car.WHEELS, w.id) })),
-      buildCarModel: car.createRoadster,
+      // showroom: one car on a turntable, so always the detailed model, in the player's chosen body
+      buildCarModel: (o = {}) => car.createRoadster({ ...o, model: o.model || this.profile.car.model || 'rocket', quality: o.showroom ? 'high' : o.quality }),
+      models: (car.MODELS || []).map((m) => ({ ...m, cost: 0, price: 0 })),
       skipTitle: false,
       upgradeCosts: Object.fromEntries(['motor', 'inverter', 'tires', 'battery'].map((k) => [k, UPGRADE_COST.slice(1)])),
       statsFor: (up) => carStats(up),
@@ -239,7 +241,7 @@ export class Game {
   equip(e) {
     const P = this.profile;
     if (!e.kind) { // team UI sends the whole car: { paint, wheels, model }
-      if (e.model && e.model !== P.car.model) { P.car.model = e.model; this.rebuildShowroomCar(); }
+      if (e.model && e.model !== P.car.model) { P.car.model = e.model; this.rebuildShowroomCar(); this.ui.showroom && this.ui.showroom.setCar && this.ui.showroom.setCar({ model: e.model }); }
       if (e.paint && e.paint !== P.car.paint) this.equip({ kind: 'paint', id: e.paint });
       if (e.wheels && e.wheels !== P.car.wheels) this.equip({ kind: 'wheel', id: e.wheels });
       return;

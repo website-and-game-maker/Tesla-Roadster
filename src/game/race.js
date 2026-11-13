@@ -114,6 +114,7 @@ export class Race {
     const pts = []; for (let i = 0; i < this.track.n; i += 4) pts.push({ x: this.track.px[i], z: this.track.pz[i] });
     this.mapPts = pts;
     g.ui.hud.setTrack && g.ui.hud.setTrack(pts, this.track.bounds);
+    g.ui.hud.setMode && g.ui.hud.setMode('ground');
 
     this.camera.far = q.drawDist * 1.6;
     if (this.scene.fog) { this.scene.fog.far = Math.min(this.scene.fog.far || q.drawDist, q.drawDist); this.scene.fog.near = Math.min(this.scene.fog.near, q.drawDist * 0.2); }

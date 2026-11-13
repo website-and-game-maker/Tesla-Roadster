@@ -80,7 +80,8 @@ export class FlightRace {
     const wheels = g.mods.car.WHEELS.map((x) => x.id);
     const names = AI_NAMES.slice().sort(() => Math.random() - 0.5);
     const mk = (paint, wh, quality, isPlayer) => {
-      const model = g.mods.car.createRoadster({ model: P.car.model || 'rocket', paint, wheels: wh, quality });
+      const chosen = (g.mods.car.MODELS || []).find((m) => m.id === P.car.model);
+      const model = g.mods.car.createRoadster({ model: chosen && chosen.flight !== false ? chosen.id : 'rocket', paint, wheels: wh, quality }); // a road-only body flies as the Rocket
       model.object.traverse((o) => { if (o.isMesh) o.castShadow = q.shadows && (isPlayer || q.id !== 'low'); });
       if (!model.setThrust) this.addFallbackJets(model);
       this.scene.add(model.object);
