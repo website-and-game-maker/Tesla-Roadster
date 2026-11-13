@@ -114,7 +114,7 @@
 .t-foot { position: absolute; bottom: calc(18px + var(--safe-b)); font-size: 11px; letter-spacing: .2em; color: rgba(255,255,255,.3); }
 
 /* ---------- main ---------- */
-.m-nav { display: flex; flex-direction: column; gap: 4px; margin-top: auto; margin-bottom: auto; align-items: flex-start; }
+.m-nav { display: flex; flex-direction: column; gap: 4px; margin-top: auto; margin-bottom: auto; align-items: flex-start; align-self: flex-start; }
 .m-nav button { position: relative; font-size: clamp(26px, 4vw, 44px); font-weight: 800; letter-spacing: -.01em; padding: 4px 0 4px 44px;
   color: rgba(255,255,255,.45); transition: color .2s, transform .25s var(--ease); text-align: left; }
 .m-nav button small { position: absolute; left: 0; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 600; color: var(--accent); letter-spacing: .1em; opacity: .5; transition: opacity .2s; }
@@ -365,4 +365,102 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 4px 7px; border-radius:
 }
 @media (prefers-reduced-motion: reduce) {
   .ui-root *, .ui-root *::before, .ui-root *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* ---------- vehicle mode toggle + profile chip ---------- */
+.ui-topbar { gap: 12px; }
+.ui-vmode { background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 999px; padding: 4px; }
+.ui-vmode button { border-radius: 999px; padding: 8px 18px; font-weight: 700; letter-spacing: .02em; }
+.ui-profile { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.ui-profile i { font-style: normal; font-size: 9px; color: var(--muted); }
+.ui-profile.in i { color: #4ade80; }
+.ui-profile:hover, .ui-profile:focus-visible { background: rgba(255,255,255,.1); }
+
+/* ---------- account ---------- */
+.acc-panel { width: min(420px, 100%); padding: 22px; border-radius: var(--r); background: rgba(14,16,22,.86); border: 1px solid var(--line); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+.acc-form { display: flex; flex-direction: column; gap: 12px; }
+.acc-err { margin: 0; min-height: 1.3em; color: var(--danger); font-size: 13px; }
+.acc-or { display: flex; align-items: center; gap: 12px; margin: 14px 0; color: var(--muted); font-size: 12px; }
+.acc-or::before, .acc-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.acc-guest { width: 100%; }
+.acc-note { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
+.acc-in { display: none; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.s-account.signed-in .acc-out { display: none; }
+.s-account.signed-in .acc-in { display: flex; }
+.acc-avatar { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; font-weight: 800; background: linear-gradient(135deg, var(--accent), var(--accent-2)); margin-bottom: 6px; }
+.acc-name { font-size: 20px; }
+.acc-email { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+
+/* ---------- tutorial ---------- */
+.ui-tut { position: absolute; left: 50%; top: calc(84px + var(--safe-t)); transform: translate(-50%, -12px); opacity: 0; pointer-events: none; transition: opacity .3s, transform .35s var(--ease); z-index: 4; }
+.ui-tut.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.tut-card { position: relative; min-width: min(380px, 86vw); max-width: 520px; padding: 16px 20px 14px; border-radius: 16px; background: rgba(14,16,22,.9); border: 1px solid rgba(62,166,255,.45); box-shadow: 0 20px 60px -20px rgba(0,0,0,.8), 0 0 40px -10px rgba(62,166,255,.4); text-align: center; }
+.tut-step { font-size: 10px; letter-spacing: .3em; color: var(--accent); }
+.tut-text { margin: 6px 0 10px; font-size: 18px; font-weight: 700; }
+.tut-keys { display: flex; justify-content: center; align-items: center; gap: 8px; min-height: 0; }
+.tut-keys em { font-style: normal; font-size: 11px; color: var(--muted); }
+.tut-keys kbd { font-size: 14px; padding: 6px 10px; animation: ui-pulse 1.4s ease-in-out infinite; }
+.tut-skip { margin-top: 10px; font-size: 11px; letter-spacing: .1em; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.ui-tut.done .tut-card { border-color: #4ade80; }
+.ui-tut.done .tut-card::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 46px; color: #4ade80; background: rgba(14,16,22,.85); border-radius: 16px; animation: ui-rise .3s var(--ease) both; }
+
+/* ---------- flight HUD ---------- */
+.h-rings, .h-alt, .h-arrow, .h-thrust { display: none; }
+.ui-hud.flight .h-rings, .ui-hud.flight .h-alt, .ui-hud.flight .h-thrust { display: flex; }
+.ui-hud.flight .h-arrow { display: block; }
+.ui-hud.flight .h-gear, .ui-hud.flight .h-drift, .ui-hud.flight .h-wrong { display: none; }
+.h-rings { position: absolute; top: calc(16px + var(--safe-t)); left: 50%; transform: translateX(-50%); align-items: baseline; gap: 4px; padding: 8px 18px; border-radius: 14px; background: rgba(10,12,16,.45); border: 1px solid var(--line); text-shadow: 0 2px 12px rgba(0,0,0,.7); }
+.h-rings span { font-size: 10px; letter-spacing: .25em; color: var(--muted); margin-right: 8px; }
+.h-rings b { font-size: 28px; font-style: italic; }
+.h-rings .h-ring-t { font-size: 18px; color: var(--muted); }
+.h-rings i { color: var(--muted); font-style: normal; }
+.h-rings.all { border-color: var(--gold); }
+.h-rings.all b { color: var(--gold); }
+.h-alt { position: absolute; right: calc(260px + var(--safe-r)); bottom: calc(40px + var(--safe-b)); align-items: baseline; gap: 6px; padding: 8px 14px; border-radius: 12px; background: rgba(10,12,16,.45); border: 1px solid var(--line); text-shadow: 0 2px 12px rgba(0,0,0,.7); }
+.h-alt span { font-size: 10px; letter-spacing: .25em; color: var(--muted); }
+.h-alt b { font-size: 26px; font-style: italic; min-width: 3ch; text-align: right; }
+.h-alt em { font-style: normal; font-size: 12px; color: var(--muted); }
+.h-vs { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; opacity: 0; transition: opacity .2s; align-self: center; }
+.h-vs.up { border-bottom: 9px solid #4ade80; opacity: 1; }
+.h-vs.down { border-top: 9px solid var(--danger); opacity: 1; }
+.h-thrust i { background: linear-gradient(90deg, #ffb020, #ff4d6d); }
+.h-arrow { position: absolute; left: 50%; top: 50%; width: 0; height: 0; opacity: 0; transition: opacity .25s; }
+.h-arrow.on { opacity: 1; }
+.h-arrow i { position: absolute; left: -22px; top: -16px; width: 44px; height: 32px; background: var(--gold); clip-path: polygon(100% 50%, 0 0, 22% 50%, 0 100%); filter: drop-shadow(0 0 10px rgba(255,201,77,.8)); animation: ui-pulse 1s ease-in-out infinite; }
+.ui-root.is-touch .h-alt { right: calc(16px + var(--safe-r)); bottom: auto; top: calc(96px + var(--safe-t)); }
+/* Keep the ring counter clear of the pause button on phones. */
+.ui-root.is-touch .h-rings { top: calc(68px + var(--safe-t)); padding: 4px 12px; }
+.ui-root.is-touch .h-rings b { font-size: 20px; }
+.ui-root.is-touch .h-tut, .ui-root.is-touch .ui-tut { top: calc(112px + var(--safe-t)); }
+
+/* ---------- flight touch controls ---------- */
+.f-stick, .f-right { display: none; }
+.ui-touch.flight .t-steer, .ui-touch.flight .t-right { display: none; }
+.ui-touch.flight .f-stick { display: flex; }
+.ui-touch.flight .f-right { display: flex; }
+.f-stick { position: absolute; left: calc(24px + var(--safe-l)); bottom: calc(22px + var(--safe-b)); flex-direction: column; align-items: center; gap: 6px; }
+.f-base { position: relative; width: min(170px, 34vh); height: min(170px, 34vh); border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.04), rgba(255,255,255,.1)); border: 1px solid rgba(255,255,255,.2); display: grid; place-items: center; touch-action: none; }
+.f-ring { position: absolute; inset: 22%; border-radius: 50%; border: 1px dashed rgba(255,255,255,.15); }
+.f-knob { width: 38%; height: 38%; border-radius: 50%; background: rgba(255,255,255,.85); box-shadow: 0 6px 20px rgba(0,0,0,.45); transition: transform .15s var(--ease); }
+.f-base.on .f-knob { transition: none; background: var(--accent); }
+.f-right { position: absolute; right: calc(18px + var(--safe-r)); bottom: calc(18px + var(--safe-b)); align-items: flex-end; gap: 14px; }
+.f-thrust { position: relative; width: 74px; height: min(210px, 46vh); border-radius: 20px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.2); overflow: hidden; touch-action: none; }
+.f-fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: linear-gradient(0deg, rgba(255,176,32,.55), rgba(255,77,109,.55)); }
+.f-handle { position: absolute; left: 6px; right: 6px; bottom: -14px; height: 28px; border-radius: 10px; background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+.f-thrust span { position: absolute; top: 10px; left: 0; right: 0; text-align: center; font-size: 9px; font-weight: 800; letter-spacing: .2em; color: rgba(255,255,255,.7); pointer-events: none; }
+.f-thrust.on { border-color: #ffb020; }
+.f-btns { display: flex; flex-direction: column; gap: 12px; }
+.ui-root .f-brake { width: 78px; height: 78px; font-size: 10px; line-height: 1.2; }
+.f-brake small { font-size: 8px; color: var(--muted); letter-spacing: .15em; }
+.f-brake.on { background: rgba(255,77,109,.45); }
+
+@media (max-width: 760px), (max-height: 520px) {
+  .ui-vmode button { padding: 6px 10px; font-size: 13px; }
+  .ui-wallet .ui-stars { display: none; }
+  .h-alt { right: calc(200px + var(--safe-r)); }
+  .tut-text { font-size: 15px; }
+}
+@media (max-width: 560px) {
+  .ui-topbar { flex-wrap: wrap; }
+  .ui-brand { display: none; }
 }

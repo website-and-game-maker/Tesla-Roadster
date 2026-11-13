@@ -29,13 +29,24 @@
     const t = setInterval(() => { p += 0.2; ui.setLoading(p, 'Loading track'); if (p >= 1) { clearInterval(t); begin(cfg); } }, 120);
   });
   function begin(cfg) {
-    race = { cfg, t: -3, lap: 1, laps: cfg.laps || 3, lapStart: 0, best: null, speed: 0, boost: 0.4, batt: 1, drift: 0, ang: 0 };
+    if (cfg.mode === 'tutorial') {
+      ui.tutorial.show({ id: 'thrust', step: 1, total: 3, text: 'Hold W to thrust', keyHint: 'W', touchHint: 'Thrust lever' });
+    }
+    race = { rings: 0, alt: 40, tutStep: cfg.mode === 'tutorial' ? 1 : 0, cfg, t: -3, lap: 1, laps: cfg.laps || 3, lapStart: 0, best: null, speed: 0, boost: 0.4, batt: 1, drift: 0, ang: 0 };
   }
   ui.on('restart', () => race && begin(race.cfg));
   ui.on('quit', () => { race = null; });
   ui.on('multiplayer', ({ action, code, name }) => {
     setTimeout(() => ui.showLobby({ code: code || 'R8X2', host: action !== 'join', track: 'coast',
       players: [{ name, me: true, host: action !== 'join', color: '#3ea6ff' }, { name: 'Volt', color: '#ff4d6d', ready: true, ping: 42 }] }), 500);
+  });
+  // Fake auth backend: any email works after a short delay; 'taken@x.com' fails sign-up.
+  ui.on('auth', ({ action, email }) => {
+    console.log('[demo] auth', action, email);
+    if (action === 'signin' || action === 'signup') setTimeout(() => {
+      if (action === 'signup' && email === 'taken@x.com') ui.setAccount({ error: 'That email already has an account.' });
+      else ui.setAccount({ signedIn: true, email, name: email.split('@')[0] });
+    }, 600);
   });
   ui.on('lobby', ({ action }) => { if (action === 'start') ui.go('setup', { mode: 'quick' }); });
 
@@ -46,6 +57,13 @@
     if (!race || ui.paused || !ui.inRace) return;
     const r = race; r.t += dt;
     const inp = ui.input.poll(dt);
+    const flight = r.cfg.vehicleMode === 'flight';
+    if (flight) {
+      const thrust = Math.max(inp.throttle || 0, ui.input.thrust || 0);
+      r.alt = Math.max(0, r.alt + ((ui.input.pitch || 0) * 30 + (inp.brake ? -10 : 0) + thrust * 4 - 2) * dt);
+      r.thrustNow = thrust;
+      if (r.tutStep === 1 && thrust > 0.5) { ui.tutorial.done('thrust'); r.tutStep = 2; setTimeout(() => ui.tutorial.show({ id: 'pitch', step: 2, total: 3, text: 'Pitch up', keyHint: 'S', touchHint: 'Stick down' }), 1100); }
+    }
     let msg = r.t < -2 ? '3' : r.t < -1 ? '2' : r.t < 0 ? '1' : r.t < 0.8 ? 'GO!' : '';
     if (r.t > 0) {
       const thr = inp.throttle || (inp.source === 'keyboard' && !inp.brake ? 0.6 : 0);
@@ -65,6 +83,9 @@
       speedKmh: r.speed, gear: 'D', lap: r.lap, lapCount: r.laps, lapTime: Math.max(0, r.t - r.lapStart), bestLap: r.best,
       position: r.cfg.mode === 'timetrial' ? null : 2, racers: (r.cfg.opponents || 0) + 1, boost: r.boost, battery: r.batt,
       driftScore: r.drift, message: msg, ghostDelta: r.cfg.mode === 'timetrial' ? Math.sin(r.t / 3) * 0.8 : null, fps: 1 / dt,
+      altitude: flight ? r.alt : undefined, thrust: flight ? r.thrustNow : undefined,
+      rings: flight ? { hit: Math.floor(r.ang / (Math.PI / 3)) % 12, total: 12 } : undefined,
+      nextRingDir: flight ? { x: Math.cos(r.t), y: Math.sin(r.t) * 0.5 } : null,
       minimap: { trackPoints: loop, player: { ...loop[i], rot: -r.ang }, others: [loop[(i + 5) % 64]] },
     }, dt);
   })(last);
