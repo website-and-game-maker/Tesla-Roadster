@@ -630,3 +630,12 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 4px 7px; border-radius:
   .s-play .p-mode { min-height: 0; justify-content: flex-start; }
   .s-play .p-mode .p-icon { position: static; font-size: 20px; margin-bottom: 6px; }
 }
+
+/* Garage: Body picker. Bodies are text cards, not round swatches. */
+.g-bodies .g-item { width: auto; height: auto; min-width: 150px; border-radius: 14px; padding: 10px 14px; background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.1); text-align: left; }
+.g-bodies .g-item:hover, .g-bodies .g-item:focus-visible { transform: translateY(-2px); }
+.g-bodies .g-item.sel { border-color: var(--accent); background: rgba(62,166,255,.12); }
+.g-body { display: flex; flex-direction: column; gap: 3px; }
+.g-body b { font-size: 14px; letter-spacing: .02em; }
+.g-body small { font-size: 12px; opacity: .65; }
+@media (max-width: 520px) { .g-bodies .g-item { min-width: 132px; padding: 8px 12px; } }
