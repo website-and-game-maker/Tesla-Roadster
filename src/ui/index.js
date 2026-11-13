@@ -8,6 +8,8 @@
 import { loadSettings, saveSettings, detectQuality, resolveGraphics, isTouchDevice, createAdaptiveQuality, QUALITY_PRESETS } from './settings.js';
 import { createInput } from './input.js';
 import { createTouchControls } from './touch.js';
+import { createDeviceWatcher, canTilt, DEVICE_LABEL } from './device.js';
+import { howToHTML, QUICK_HINT, controlsFor } from './howto.js';
 import { createHUD } from './hud.js';
 import { createShowroom, buildPlaceholderRoadster } from './garage.js';
 import { DEFAULT_PAINTS, DEFAULT_WHEELS, DEFAULT_TRACKS, DEFAULT_MODES, UPGRADES } from './catalog.js';
@@ -44,6 +46,11 @@ export function createUI(opts = {}) {
   const detected = detectQuality();
   if (!settings.resolvedQuality) settings.resolvedQuality = detected.tier;
   const touch = isTouchDevice();
+  // What the player is holding right now (follows the last input used). 'Auto' in
+  // settings means "follow it"; picking a device there pins it.
+  const devices = createDeviceWatcher();
+  const device = () => (settings.controls === 'auto' ? devices.current : settings.controls);
+  const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { /* storage blocked */ } return null; };
   let profile = {
     credits: 5000, stars: 0,
     owned: { paints: paints.filter((p) => !p.price).map((p) => p.id), wheels: wheels.filter((w) => !w.price).map((w) => w.id) },
@@ -73,7 +80,22 @@ export function createUI(opts = {}) {
   const getSettings = () => settings;
   const input = createInput(getSettings);
   const hud = createHUD(shell, getSettings);
-  const touchCtl = createTouchControls(shell, input, getSettings, () => pause());
+  const touchCtl = createTouchControls(shell, input, getSettings, () => pause(), () => toggleTilt());
+
+  // Tilt steering: one switch, used by the How to drive card, the in-race pill and Settings.
+  async function toggleTilt(force) {
+    const want = force ?? !(settings.tiltSteer && touchCtl.tiltActive);
+    if (want) {
+      if (!(await touchCtl.enableTilt())) { toast('Tilt is not available on this device'); setSetting('tiltSteer', false); touchCtl.refreshTiltLook(); return false; }
+      setSetting('tiltSteer', true);
+      toast('Tilt is on. Hold the device sideways and tilt it to steer.', { ms: 3600 });
+    } else {
+      setSetting('tiltSteer', false);
+      toast('Tilt is off. Drag on the left side to steer.');
+    }
+    touchCtl.refreshTiltLook();
+    return want;
+  }
 
   let showroom = null;
   if (THREE) {
@@ -161,7 +183,8 @@ export function createUI(opts = {}) {
     <button class="t-press" data-autofocus>${touch ? 'Tap to start' : 'Press any key'}</button>
     <div class="t-foot">v0.1 · ${esc(detected.tier.toUpperCase())} GRAPHICS DETECTED</div>
   </section>`));
-  const leaveTitle = () => { if (current !== 'title') return; sfx('click'); emit('interact'); go('main', { replace: true }); };
+  const PROMPT = { touch: 'Tap to start', keyboard: 'Press any key', gamepad: 'Press A to start' };
+  const leaveTitle = () => { if (current !== 'title') return; sfx('click'); emit('interact'); touchCtl.ensureTilt(); go('main', { replace: true }); };
   title.addEventListener('pointerup', leaveTitle);
   addEventListener('keydown', (e) => { if (current === 'title' && !e.repeat) leaveTitle(); });
 
@@ -173,8 +196,9 @@ export function createUI(opts = {}) {
       <button data-go="garage"><small>02</small>Garage</button>
       <button data-act="tutorial"><small>03</small>Tutorial</button>
       <button data-go="settings"><small>04</small>Settings</button>
-      <button data-go="account"><small>05</small>Profile</button>
-      <button data-go="about"><small>06</small>About</button>
+      <button data-go="howto"><small>05</small>How to play</button>
+      <button data-go="account"><small>06</small>Profile</button>
+      <button data-go="about"><small>07</small>About</button>
     </nav>
     <div class="m-hero">
       <div class="m-hero-name">TESLA ROADSTER</div>
@@ -466,11 +490,11 @@ export function createUI(opts = {}) {
     { tab: 'graphics', key: 'shadows', label: 'Shadows', type: 'toggle', manual: true },
     { tab: 'graphics', key: 'fov', label: 'Field of view', type: 'range', min: 55, max: 95, step: 1, fmt: (v) => v + '°' },
     { tab: 'graphics', key: 'showFps', label: 'Show FPS', type: 'toggle' },
-    { tab: 'controls', key: 'controls', label: 'Input', type: 'seg', options: [['auto', 'Auto'], ['keyboard', 'Keyboard'], ['gamepad', 'Gamepad'], ['touch', 'Touch']] },
+    { tab: 'controls', key: 'controls', label: 'Controls', type: 'seg', options: [['auto', 'Auto'], ['keyboard', 'Keyboard'], ['gamepad', 'Controller'], ['touch', 'Touch']] },
     { tab: 'controls', key: 'steerSensitivity', label: 'Steering sensitivity', type: 'range', min: 0.5, max: 1.5, step: 0.05, fmt: (v) => Math.round(v * 100) + '%' },
     { tab: 'controls', key: 'invertPitch', label: 'Invert pitch (flight)', type: 'toggle' },
-    { tab: 'controls', key: 'tiltSteer', label: 'Tilt to steer (mobile)', type: 'toggle' },
-    { tab: 'controls', key: 'haptics', label: 'Vibration', type: 'toggle' },
+    { tab: 'controls', key: 'tiltSteer', label: 'Tilt to steer', type: 'toggle', when: () => device() === 'touch' && canTilt() },
+    { tab: 'controls', key: 'haptics', label: 'Vibration', type: 'toggle', when: () => device() === 'touch' },
     { tab: 'audio', key: 'masterVol', label: 'Master volume', type: 'range', min: 0, max: 1, step: 0.05, fmt: (v) => Math.round(v * 100) + '%' },
     { tab: 'audio', key: 'musicVol', label: 'Music', type: 'range', min: 0, max: 1, step: 0.05, fmt: (v) => Math.round(v * 100) + '%' },
     { tab: 'audio', key: 'sfxVol', label: 'Effects', type: 'range', min: 0, max: 1, step: 0.05, fmt: (v) => Math.round(v * 100) + '%' },
@@ -491,7 +515,7 @@ export function createUI(opts = {}) {
   function renderSettings() {
     setEl.querySelectorAll('.st-tabs button').forEach((b) => b.classList.toggle('sel', b.dataset.tab === settingsTab));
     const auto = settings.quality === 'auto';
-    setEl.querySelector('.st-rows').innerHTML = SETTINGS_SCHEMA.filter((r) => r.tab === settingsTab).map((r) => {
+    setEl.querySelector('.st-rows').innerHTML = SETTINGS_SCHEMA.filter((r) => r.tab === settingsTab && (!r.when || r.when())).map((r) => {
       const v = settings[r.key], dis = r.manual && auto;
       let ctl = '';
       if (r.type === 'seg') ctl = `<div class="ui-seg">${r.options.map(([val, lab]) => `<button data-set="${r.key}" data-v="${val}" class="${v === val ? 'sel' : ''}">${lab}</button>`).join('')}</div>`;
@@ -504,10 +528,10 @@ export function createUI(opts = {}) {
       const g = resolveGraphics(settings);
       extra.innerHTML = `<p class="st-note">Detected: <b>${esc(detected.gpu)}</b> · ${detected.cores ?? '?'} cores. ${auto ? `Auto is running <b>${g.tier}</b> and adjusts with frame rate.` : ''}</p>`;
     } else if (settingsTab === 'controls') {
-      extra.innerHTML = `<table class="st-keys"><tbody>
-        ${[['Accelerate', 'W / ↑', 'RT'], ['Brake / reverse', 'S / ↓', 'LT'], ['Steer', 'A D / ← →', 'Left stick'], ['Drift (handbrake)', 'Space', 'A'],
-          ['Boost', 'Shift', 'X / RB'], ['Camera', 'C', 'Y'], ['Flight: pitch / roll', 'S W · A D', 'Left stick'], ['Flight: thrust', 'W (hold)', 'RT'], ['Reset car', 'R', 'Back'], ['Pause', 'Esc / P', 'Start']]
-          .map(([a, k, p]) => `<tr><td>${a}</td><td><kbd>${k}</kbd></td><td><kbd>${p}</kbd></td></tr>`).join('')}</tbody></table>`;
+      const d = device();
+      extra.innerHTML = `<p class="st-note">${settings.controls === 'auto' ? `Auto: you're using a <b>${esc(DEVICE_LABEL[d].toLowerCase())}</b>. It switches by itself when you use something else.` : `Set to <b>${esc(DEVICE_LABEL[d].toLowerCase())}</b>.`}</p>
+        <table class="st-keys"><tbody>${controlsFor(d, settings.vehicleMode).map((c) => `<tr><td>${esc(c.what)}</td><td><kbd>${esc(c.key)}</kbd></td></tr>`).join('')}</tbody></table>
+        <button class="ui-secondary st-howto" data-go="howto">How to play</button>`;
     } else if (settingsTab === 'gameplay') {
       extra.innerHTML = `<button class="ui-secondary st-reset">Reset all settings</button>`;
     } else extra.innerHTML = '';
@@ -534,8 +558,8 @@ export function createUI(opts = {}) {
     const key = b.dataset.set;
     if (b.hasAttribute('data-toggle')) {
       let nv = !settings[key];
-      if (key === 'tiltSteer' && nv && !(await touchCtl.enableTilt())) { toast('Tilt is not available on this device'); nv = false; }
-      setSetting(key, nv);
+      if (key === 'tiltSteer') await toggleTilt(nv);
+      else setSetting(key, nv);
     } else setSetting(key, b.dataset.v);
     sfx('click'); renderSettings();
     setEl.querySelector(`[data-set="${key}"]${b.dataset.v ? `[data-v="${b.dataset.v}"]` : ''}`)?.focus();
@@ -545,6 +569,27 @@ export function createUI(opts = {}) {
     const row = SETTINGS_SCHEMA.find((x) => x.key === r.dataset.set);
     r.nextElementSibling.textContent = row.fmt(+r.value);
     setSetting(r.dataset.set, +r.value);
+  });
+
+  // How to drive
+  const howEl = mount('howto', h(`<section class="s-howto">
+    ${topbar()}
+    <div class="ui-head">${backBtn()}<h2>How to play</h2></div>
+    <div class="ht-body"></div>
+    <div class="ht-actions"><button class="ui-primary ht-go" data-howto="go" hidden>Start race <span>›</span></button></div>
+  </section>`));
+  let pendingRace = null;
+  function renderHowTo() {
+    const d = device();
+    howEl.querySelector('.ht-body').innerHTML = howToHTML(d, { tiltAvailable: canTilt(), tiltOn: !!settings.tiltSteer && touchCtl.tiltActive, vehicle: settings.vehicleMode || 'flight' });
+    howEl.querySelector('.ht-go').hidden = !pendingRace;
+  }
+  howEl._onShow = (data) => { pendingRace = data?.pending || null; renderHowTo(); };
+  howEl.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-howto]'); if (!b) return;
+    sfx('click');
+    if (b.dataset.howto === 'tilt') { await toggleTilt(); renderHowTo(); }
+    else if (b.dataset.howto === 'go' && pendingRace) { const cfg = pendingRace; pendingRace = null; store(HOWTO_SEEN, '1'); startRace(cfg); }
   });
 
   // About
@@ -564,6 +609,7 @@ export function createUI(opts = {}) {
       <h2>Paused</h2>
       <button class="ui-primary" data-p="resume" data-autofocus>Resume</button>
       <button class="ui-secondary" data-p="restart">Restart</button>
+      <button class="ui-secondary" data-p="howto">How to play</button>
       <button class="ui-secondary" data-p="settings">Settings</button>
       <button class="ui-secondary" data-p="quit">Quit to menu</button>
     </div>
@@ -576,6 +622,7 @@ export function createUI(opts = {}) {
     if (a === 'resume') resume();
     else if (a === 'restart') { closeOverlays(); paused = false; emit('restart'); enterRace(); }
     else if (a === 'settings') go('settings');
+    else if (a === 'howto') go('howto');
     else if (a === 'quit') confirmBox('Quit this race?', 'Progress in this race will be lost.', () => { paused = false; emit('quit'); showMenu(); });
   });
 
@@ -729,7 +776,11 @@ export function createUI(opts = {}) {
     const wheel = wheels.find((w) => w.id === settings.car.wheels) || wheels[0];
     return { paint: paint.id, wheels: wheel.id, color: paint.color, paintSpec: paint, wheelSpec: wheel, upgrades: { ...profile.upgrades } };
   }
+  // The first race on a device opens How to drive first, with a Start race button.
+  const HOWTO_SEEN = 'roadster.howto.v1';
+  const HINT_COUNT = 'roadster.hints.v1';
   function startRace(cfg) {
+    if (!store(HOWTO_SEEN) && cfg.mode !== 'multiplayer') { go('howto', { data: { pending: cfg } }); return; }
     sfx('click');
     raceVehicle = cfg.vehicleMode || settings.vehicleMode || 'flight';
     hud.setMode(raceVehicle);
@@ -745,6 +796,17 @@ export function createUI(opts = {}) {
     shell.classList.add('in-race');
     showroom?.stop();
     hud.show(true); applyInputMode();
+    touchCtl.ensureTilt().then(showRaceHint);
+  }
+  // A one-line reminder of the controls for this device at the start of the first few races.
+  function showRaceHint() {
+    const n = +(store(HINT_COUNT) || 0);
+    if (n >= 3 || !inRace) return;
+    store(HINT_COUNT, String(n + 1));
+    const d = device();
+    const pre = raceVehicle === 'ground' ? '' : 'flight_';
+    const text = d === 'touch' ? (touchCtl.tiltActive ? QUICK_HINT[pre + 'touchTilt'] : QUICK_HINT[pre + 'touch']) : QUICK_HINT[pre + d];
+    setTimeout(() => inRace && toast(text, { ms: 5000 }), 600);
   }
   function showMenu() {
     inRace = false; paused = false; tutorial.hide();
@@ -767,10 +829,19 @@ export function createUI(opts = {}) {
     applyInputMode();
   }
   function applyInputMode() {
-    const mode = settings.controls === 'auto' ? (touch ? 'touch' : 'keyboard') : settings.controls;
+    const mode = device();
     touchCtl.setMode(raceVehicle);
     touchCtl.show(inRace && !paused && mode === 'touch');
+    shell.classList.toggle('is-touch', mode === 'touch');
+    shell.dataset.device = mode;
+    const press = title.querySelector('.t-press'); if (press) press.textContent = PROMPT[mode];
   }
+  devices.onChange(() => {
+    if (settings.controls !== 'auto') return;
+    applyInputMode();
+    if (current === 'howto') renderHowTo();
+    if (current === 'settings') renderSettings();
+  });
   function showResults(r = {}) {
     inRace = false; touchCtl.show(false); hud.show(false); tutorial.hide();
     const pos = r.position;
@@ -890,6 +961,7 @@ export function createUI(opts = {}) {
   // ---------- boot ----------
   showroom?.start();
   show(opts.skipTitle ? 'main' : 'title');
+  applyInputMode();
   refreshBindings();
 
   Object.defineProperties(api, Object.getOwnPropertyDescriptors({

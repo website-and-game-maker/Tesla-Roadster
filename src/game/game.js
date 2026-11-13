@@ -73,7 +73,12 @@ export class Game {
       root: document.body, THREE,
       settings: this.profile.settings,
       tracks: this.worlds.map((w) => ({ id: w.id, name: w.name, desc: w.description, description: w.description, unlock: w.unlock ?? w.unlockStars ?? 0, modes: w.modes })),
-      modes: [{ id: 'career', name: 'Career' }, { id: 'quick', name: 'Quick Race' }, { id: 'timetrial', name: 'Time Trial' }, { id: 'multiplayer', name: 'Multiplayer' }],
+      modes: [
+        { id: 'career', name: 'Career', icon: '★', desc: 'Win events, earn credits and stars, unlock new tracks.' },
+        { id: 'quick', name: 'Quick Race', icon: '⚑', desc: 'Jump straight into a race against AI pilots.' },
+        { id: 'timetrial', name: 'Time Trial', icon: '⏱', desc: 'Race the clock and beat your best lap.' },
+        { id: 'multiplayer', name: 'Multiplayer', icon: '◎', desc: 'Race other pilots online with a room code.' },
+      ],
       paints: car.PAINTS.map((p) => ({ ...p, cost: costOf(car.PAINTS, p.id), price: costOf(car.PAINTS, p.id) })),
       wheels: car.WHEELS.map((w) => ({ ...w, cost: costOf(car.WHEELS, w.id), price: costOf(car.WHEELS, w.id) })),
       buildCarModel: car.createRoadster,
@@ -139,6 +144,9 @@ export class Game {
     const s = this.profile.settings;
     if (s.quality !== this.quality.mode) this.quality.setMode(s.quality);
     this.applyAudioSettings();
+    // The team UI's touch controls own tilt steering (and its on-screen switch). Reading
+    // the sensor here as well would add the tilt twice and make steering twice as sharp.
+    if (this.teamUI) { this.input.enableTilt(false); return; }
     this.input.enableTilt(!!s.tiltSteer).then((ok) => { if (!ok && s.tiltSteer) { s.tiltSteer = false; this.ui.toast('Tilt steering not available'); } });
   }
 

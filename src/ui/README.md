@@ -33,3 +33,7 @@ Graphics helpers: `detectQuality()`, `resolveGraphics(settings)`, `createAdaptiv
 - Touch flight controls feed `ui.input.pitch` (+ = nose up, stick down), `roll`, `yaw`, `thrust` (lever, stays put), `boost`, `brake`. All controls are multi-touch.
 - Tutorial: `ui.tutorial.show({ id, text, keyHint, touchHint?, step?, total? })`, `ui.tutorial.done(id)`, `ui.tutorial.hide()`, `ui.tutorial.complete()`. Emits `tutorial` `{ action: 'show' | 'skip' | 'complete', id? }`. The first Play in flight mode offers the tutorial once.
 - Account: emits `auth` `{ action: 'signin' | 'signup' | 'signout' | 'guest', email?, password? }`. Reflect results with `ui.setAccount({ signedIn, email, name, error })`. Passwords are cleared from the form after submit and never stored.
+
+## Devices and How to drive
+
+`device.js` watches what the player actually uses (finger, key, controller) and the UI follows it when Controls is on Auto: touch controls, the title prompt, the Settings controls list and the How to drive screen all show only that device. `howto.js` builds the How to drive screen: the current device's controls big, a "Tilt to steer" card on phones and tablets with motion sensors, and the other devices folded under "Using something else?". The first race on a device opens it first; the first three races show a one-line reminder. Tilt is owned by `touch.js` (the engine's own tilt stays off when this UI is loaded) and only counts as on once the sensor reports.

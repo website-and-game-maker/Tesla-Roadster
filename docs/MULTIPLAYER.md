@@ -22,7 +22,7 @@ Strong opinion: this beats Firebase or a paid realtime service for a racing game
 | Private room | `mp.hostRoom({ trackId, laps })` returns a 5-character code (e.g. `K7QXM`). Friends call `mp.joinRoom(code)` or open an invite link `…/?room=K7QXM`. The host picks the track and laps, can kick players, and starts the race. |
 | Single player | Unchanged. The local leaderboard still records personal bests offline. |
 
-Up to 8 drivers per room. You get chat in the lobby, a live position HUD, a lap feed, a 30 s finish window after the winner crosses the line (then DNF), and a results screen.
+Up to 8 drivers per room. With `kidSafe: true` in `config.js` there is no chat and every driver gets a made-up name ("Teal Otter") from the host; the kids' game site builds it that way. Otherwise you get chat in the lobby, a live position HUD, a lap feed, a 30 s finish window after the winner crosses the line (then DNF), and a results screen.
 
 ## How it's wired into the game
 

@@ -30,6 +30,11 @@ export function attachMultiplayer(game, THREE) {
   };
 
   const mp = new Multiplayer(profileFor(readName()));
+  // Kid-safe rooms have no typed names: take the name box off the Multiplayer screen.
+  if (mp.cfg.kidSafe) {
+    const field = document.querySelector('.mp-name')?.closest('label');
+    if (field) field.outerHTML = '<p class="mp-safe">Online drivers get a made-up name like "Teal Otter", and there is no chat.</p>';
+  }
   const randomWorld = () => worlds[Math.floor(Math.random() * worlds.length)].id; // every world has a flight course
   const vmode = () => (game.profile?.settings?.vehicleMode === 'ground' ? 'ground' : 'flight');
   mp.setQuickMatchSettings({ trackId: randomWorld(), laps: 3, vehicleMode: 'flight' });

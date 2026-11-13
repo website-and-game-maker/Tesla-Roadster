@@ -17,6 +17,7 @@ import {
   cleanName,
   cleanColor,
   cleanChat,
+  madeUpName,
 } from './protocol.js';
 
 const defaultNow = () => (globalThis.performance ? performance.now() : Date.now());
@@ -252,6 +253,7 @@ export class RaceSession extends Emitter {
   }
 
   chat(text) {
+    if (this.cfg.kidSafe) return;
     const t = cleanChat(text);
     if (!t) return;
     if (this.isHost) this._onChat(this.selfId, t);
@@ -392,7 +394,7 @@ export class RaceSession extends Emitter {
         this._onFinish(id, +msg.ms, +msg.best);
         break;
       case 'chat':
-        this._onChat(id, cleanChat(msg.text));
+        if (!this.cfg.kidSafe) this._onChat(id, cleanChat(msg.text));
         break;
       default:
         break;
@@ -402,7 +404,8 @@ export class RaceSession extends Emitter {
   _makePlayer(id, p, isHost) {
     return {
       id,
-      name: cleanName(p.name),
+      // Kid-safe rooms ignore whatever name a player sends and give a made-up one.
+      name: this.cfg.kidSafe ? madeUpName(id) : cleanName(p.name),
       color: cleanColor(p.color),
       carId: String(p.carId || 'roadster').slice(0, 24),
       playerId: String(p.playerId || '').slice(0, 40),
@@ -655,7 +658,7 @@ export class RaceSession extends Emitter {
         this.emit('results', msg.results);
         break;
       case 'chat':
-        this.emit('chat', msg);
+        if (!this.cfg.kidSafe) this.emit('chat', msg);
         break;
       default:
         break;
