@@ -54,10 +54,15 @@ export function createUI(opts = {}) {
   const tracks = opts.tracks || DEFAULT_TRACKS;
   const modes = opts.modes || DEFAULT_MODES;
   // opts.upgradeCosts = { motor: [..], inverter: [..], ... } lets the game set the economy.
+  // opts.models = [{ id, name, flight }]: car bodies, all free. Empty hides the Body tab.
+  const models = Array.isArray(opts.models) ? opts.models : [];
   const upgrades = UPGRADES.map((u) => ({ ...u, cost: opts.upgradeCosts?.[u.id] || u.cost }));
 
   // ---------- state ----------
   const settings = loadSettings();
+  if (models.length && !models.some((m) => m.id === settings.car.model)) settings.car.model = models[0].id;
+  const modelOf = (id = settings.car.model) => models.find((m) => m.id === id);
+  const heroName = () => (modelOf()?.name || (window.__ROADSTER_NATIVE ? 'Rocket Roadster' : 'Tesla Roadster')).toUpperCase();
   const detected = detectQuality();
   if (!settings.resolvedQuality) settings.resolvedQuality = detected.tier;
   const touch = isTouchDevice();
@@ -118,7 +123,7 @@ export function createUI(opts = {}) {
       showroom = createShowroom(THREE, shell.querySelector('.ui-showroom'), {
         buildCarModel: opts.buildCarModel, paints, wheels, getQuality: () => resolveGraphics(settings).tier,
       });
-      showroom.setCar({ paint: settings.car.color, wheels: settings.car.wheels });
+      showroom.setCar(showroomCar());
     } catch (e) { console.warn('[ui] showroom disabled:', e); }
   }
 
@@ -213,7 +218,7 @@ export function createUI(opts = {}) {
       <button data-go="settings" class="m-item"><i>${ICON.settings}</i><span><b>Settings</b><small>Graphics, controls and sound</small></span></button>
     </nav>
     <div class="m-hero">
-      <div class="m-hero-name">${window.__ROADSTER_NATIVE ? 'ROCKET ROADSTER' : 'TESLA ROADSTER'}</div>
+      <div class="m-hero-name" data-bind="modelName">${esc(heroName())}</div>
       <div class="m-specs">
         <div><b>1.9</b><span>s 0–100 km/h</span></div>
         <div><b>400+</b><span>km/h top speed</span></div>
@@ -397,21 +402,23 @@ export function createUI(opts = {}) {
   });
 
   // Garage
-  let garageTab = 'paint', garageSel = null;
+  let garageTab = models.length ? 'body' : 'paint', garageSel = null;
   const garageEl = mount('garage', h(`<section class="s-garage">
     ${topbar()}
     <div class="ui-head">${backBtn()}<h2>Garage</h2></div>
     <div class="g-stats"></div>
     <div class="g-panel">
       <div class="ui-tabs g-tabs" role="tablist">
-        <button data-tab="paint" role="tab">Paint</button><button data-tab="wheels" role="tab">Wheels</button><button data-tab="upgrades" role="tab">Upgrades</button>
+        ${models.length ? '<button data-tab="body" role="tab">Body</button>' : ''}<button data-tab="paint" role="tab">Paint</button><button data-tab="wheels" role="tab">Wheels</button><button data-tab="upgrades" role="tab">Upgrades</button>
       </div>
       <div class="g-items"></div>
       <div class="g-foot"><div class="g-info"><b class="g-name"></b><span class="g-price"></span></div><button class="ui-primary g-act"></button></div>
     </div>
   </section>`));
   garageEl._onShow = () => { garageSel = null; renderGarage(); };
-  function equippedOf(tab) { return tab === 'paint' ? settings.car.color : settings.car.wheels; }
+  function equippedOf(tab) { return tab === 'body' ? settings.car.model : tab === 'paint' ? settings.car.color : settings.car.wheels; }
+  const listOf = (tab) => tab === 'body' ? models : tab === 'paint' ? paints : wheels;
+  const ownedOf = (tab) => tab === 'body' ? models.map((m) => m.id) : profile.owned?.[tab === 'paint' ? 'paints' : 'wheels'] || [];
   function renderGarage() {
     garageEl.querySelectorAll('.g-tabs button').forEach((b) => b.classList.toggle('sel', b.dataset.tab === garageTab));
     const items = garageEl.querySelector('.g-items');
@@ -427,13 +434,15 @@ export function createUI(opts = {}) {
       }).join('');
     } else {
       foot.style.display = '';
-      const list = garageTab === 'paint' ? paints : wheels;
-      const owned = profile.owned?.[garageTab === 'paint' ? 'paints' : 'wheels'] || [];
+      const list = listOf(garageTab);
+      const owned = ownedOf(garageTab);
       garageSel ??= equippedOf(garageTab);
-      items.className = 'g-items ' + (garageTab === 'paint' ? 'g-swatches' : 'g-wheels');
+      items.className = 'g-items ' + (garageTab === 'body' ? 'g-bodies' : garageTab === 'paint' ? 'g-swatches' : 'g-wheels');
       items.innerHTML = list.map((it) => {
         const own = owned.includes(it.id) || !it.price;
-        const vis = garageTab === 'paint'
+        const vis = garageTab === 'body'
+          ? `<span class="g-body"><b>${esc(it.name)}</b><small>${it.flight ? 'Flies and drives' : 'Drives only'}</small></span>`
+          : garageTab === 'paint'
           ? `<i class="g-sw" style="--c:${esc(it.color)}"></i>`
           : `<i class="g-wh" style="--c:${esc(it.color || '#bbb')};--n:${it.spokes || 8}"></i>`;
         return `<button class="g-item${it.id === garageSel ? ' sel' : ''}${it.id === equippedOf(garageTab) ? ' eq' : ''}${own ? '' : ' lock'}" data-item="${esc(it.id)}" title="${esc(it.name)}" aria-label="${esc(it.name)}">${vis}${own ? '' : '<em>🔒</em>'}</button>`;
@@ -464,7 +473,7 @@ export function createUI(opts = {}) {
     const item = e.target.closest('[data-item]');
     if (item) {
       garageSel = item.dataset.item; sfx('hover');
-      showroom?.setCar(garageTab === 'paint' ? { paint: garageSel } : { wheels: garageSel }); // live preview, even if locked
+      showroom?.setCar(garageTab === 'body' ? { model: garageSel } : garageTab === 'paint' ? { paint: garageSel } : { wheels: garageSel }); // live preview, even if locked
       renderGarage();
       garageEl.querySelector(`[data-item="${CSS.escape(garageSel)}"]`)?.focus();
       return;
@@ -472,19 +481,18 @@ export function createUI(opts = {}) {
     const up = e.target.closest('[data-up]');
     if (up) { purchase('upgrade', up.dataset.up); return; }
     if (e.target.closest('.g-act')) {
-      const kind = garageTab === 'paint' ? 'paint' : 'wheel';
-      const list = garageTab === 'paint' ? paints : wheels;
-      const it = list.find((x) => x.id === garageSel);
-      const owned = profile.owned?.[garageTab === 'paint' ? 'paints' : 'wheels'] || [];
+      const kind = garageTab === 'body' ? 'model' : garageTab === 'paint' ? 'paint' : 'wheel';
+      const it = listOf(garageTab).find((x) => x.id === garageSel);
+      const owned = ownedOf(garageTab);
       if (!it) return;
       if (owned.includes(it.id) || !it.price) equip(kind, it.id);
       else purchase(kind, it.id);
     }
   });
   function equip(kind, id) {
-    if (kind === 'paint') settings.car.color = id; else settings.car.wheels = id;
+    if (kind === 'model') settings.car.model = id; else if (kind === 'paint') settings.car.color = id; else settings.car.wheels = id;
     saveSettings(settings); sfx('click');
-    showroom?.setCar({ paint: settings.car.color, wheels: settings.car.wheels });
+    showroom?.setCar(showroomCar());
     emit('equip', carPayload());
     renderGarage(); refreshBindings();
   }
@@ -810,10 +818,11 @@ export function createUI(opts = {}) {
   shell.appendChild(loadEl);
 
   // ---------- flows ----------
+  function showroomCar() { return { model: modelOf() ? settings.car.model : undefined, paint: settings.car.color, wheels: settings.car.wheels }; }
   function carPayload() {
     const paint = paints.find((p) => p.id === settings.car.color) || paints[0];
     const wheel = wheels.find((w) => w.id === settings.car.wheels) || wheels[0];
-    return { paint: paint.id, wheels: wheel.id, color: paint.color, paintSpec: paint, wheelSpec: wheel, upgrades: { ...profile.upgrades } };
+    return { ...(modelOf() ? { model: settings.car.model } : {}), paint: paint.id, wheels: wheel.id, color: paint.color, paintSpec: paint, wheelSpec: wheel, upgrades: { ...profile.upgrades } };
   }
   // The first race on a device opens How to drive first, with a Start race button.
   const HOWTO_SEEN = 'roadster.howto.v1';
@@ -858,7 +867,7 @@ export function createUI(opts = {}) {
     inRace = false; paused = false; tutorial.hide();
     shell.classList.remove('in-race');
     hud.show(false); touchCtl.show(false);
-    showroom?.setCar({ paint: settings.car.color, wheels: settings.car.wheels });
+    showroom?.setCar(showroomCar());
     showroom?.start();
     stack.length = 0; current = null;
     show(needsTutorial() ? 'welcome' : 'main'); refreshBindings();
@@ -913,6 +922,7 @@ export function createUI(opts = {}) {
     shell.querySelectorAll('[data-bind=stars]').forEach((n) => { n.textContent = typeof profile.stars === 'number' ? profile.stars : Object.values(profile.stars || {}).reduce((a, b) => a + (+b || 0), 0); });
     const p = paints.find((x) => x.id === settings.car.color);
     mainEl.querySelector('[data-bind=paintName]').textContent = p ? p.name : '';
+    mainEl.querySelector('[data-bind=modelName]').textContent = heroName();
     shell.querySelectorAll('[data-vmode]').forEach((b) => { const on = b.dataset.vmode === settings.vehicleMode; b.classList.toggle('sel', on); b.setAttribute('aria-checked', on); });
     shell.querySelectorAll('[data-bind=accountName]').forEach((n) => { n.textContent = account.signedIn ? (account.name || account.email || 'Driver') : 'Guest'; });
     shell.querySelectorAll('.ui-profile').forEach((n) => n.classList.toggle('in', !!account.signedIn));
@@ -1033,6 +1043,9 @@ export function createUI(opts = {}) {
     go: (n, d) => go(n, { data: d }),
     setProfile(p = {}) {
       profile = { ...profile, ...p, owned: { ...profile.owned, ...(p.owned || {}) }, upgrades: { ...profile.upgrades, ...(p.upgrades || {}) } };
+      if (p.car?.model && modelOf(p.car.model) && p.car.model !== settings.car.model) {
+        settings.car.model = p.car.model; saveSettings(settings); showroom?.setCar({ model: p.car.model });
+      }
       if (pendingEquip) {
         const { kind, id } = pendingEquip; pendingEquip = null;
         if ((profile.owned[kind === 'paint' ? 'paints' : 'wheels'] || []).includes(id)) equip(kind, id);
