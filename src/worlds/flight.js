@@ -245,13 +245,8 @@ export const RING_COLORS = {
 export function buildRingObject(course, quality) {
   const seg = quality.textureSize >= 1024 ? 64 : 32;
   const geo = new THREE.TorusGeometry(1, 0.075, 10, seg);
-  const mat = new THREE.MeshStandardMaterial({ color: 0x222831, metalness: 0.6, roughness: 0.25, emissive: 0xffffff, emissiveIntensity: 1.6 });
-  mat.onBeforeCompile = (sh) => {
-    sh.fragmentShader = sh.fragmentShader.replace(
-      '#include <emissivemap_fragment>',
-      '#include <emissivemap_fragment>\n#ifdef USE_INSTANCING_COLOR\n totalEmissiveRadiance *= vColor;\n#endif',
-    );
-  };
+  // Unlit and not tone-mapped so the ring colours stay vivid in any light.
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
   const n = course.rings.length;
   const mesh = new THREE.InstancedMesh(geo, mat, n);
   mesh.name = 'rings';

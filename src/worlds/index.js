@@ -121,7 +121,8 @@ export function createWorld(id, opts = {}) {
   if (!scene) throw new Error('createWorld needs { scene }');
   const quality = getQuality(opts.quality);
   const modes = def.modes || ['flight', 'ground'];
-  const mode = modes.includes(opts.mode) ? opts.mode : modes[0];
+  // No mode given: ground where the world has a road (keeps older callers working).
+  const mode = modes.includes(opts.mode) ? opts.mode : modes.includes('ground') ? 'ground' : 'flight';
   const root = new THREE.Group();
   root.name = `world-${def.id}`;
   scene.add(root);
