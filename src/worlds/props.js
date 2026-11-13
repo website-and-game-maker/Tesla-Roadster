@@ -285,6 +285,7 @@ export function scatterProps(rules, ctx) {
       for (let i = 0; i < track.count; i += step) {
         if (rule.skipNearStart && (i < 40 / track.spacing || i > track.count - 40 / track.spacing)) continue;
         if (rule.onlyCorners && !track.kerbs[i]) continue;
+        if (track.gap && track.gap[i]) continue;
         for (const side of sides) {
           const off = track.wallHalfWidth + (rule.offset ?? 2);
           const x = track.pos[i * 3] + track.right[i * 3] * off * side;

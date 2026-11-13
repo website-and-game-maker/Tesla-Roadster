@@ -28,6 +28,8 @@ function makePath() {
 }
 const PATH = makePath();
 const FLOOR = 4;
+// Hop races: a viaduct along the river, 24 m up, with collapsed spans.
+const VIADUCT = PATH.map(([x, z], k) => [x, z, FLOOR + 24 + Math.sin((k / PATH.length) * Math.PI * 8) * 3]);
 const RIM = 170;
 
 // Arches across the canyon at these points of the course (0..1).
@@ -37,19 +39,34 @@ export default {
   id: 'canyon',
   name: 'Red Rock Run',
   tagline: 'Low-level canyon run under stone arches',
-  description: 'Skim a desert river between 170 m walls, slip under natural arches and pop out over the rim. Pure flight.',
+  description: 'Skim a desert river between 170 m walls, slip under natural arches and pop out over the rim, or hop the broken spans of the river viaduct.',
   location: 'Earth',
-  modes: ['flight'],
-  noRoad: true,
+  modes: ['hop', 'flight'],
+  elevated: true,
   terrainUsesTrack: true,
+  goldSpeed: 44,
+  gaps: [
+    { at: 0.08, length: 20 },
+    { at: 0.24, length: 28, ramp: { length: 26, height: 2.4 } },
+    { at: 0.41, length: 22 },
+    { at: 0.57, length: 32, ramp: { length: 28, height: 2.8 } },
+    { at: 0.79, length: 24 },
+    { at: 0.93, length: 18 },
+  ],
+  hopRings: [{ at: 0.33, height: 13, radius: 5 }, { at: 0.68, height: 13, radius: 5 }],
+  pillarSpacing: 34,
+  deckColor: 0xb08a6a,
   seed: 8203,
   gravity: 9.81,
   laps: 2,
   music: 'epic',
-  points: PATH,
+  points: VIADUCT,
   flight: { points: PATH, ringRadius: 9, ceiling: 480, laps: 2, goldSpeed: 66, clearance: 3 },
-  roadWidth: 30,
-  runoff: 0,
+  roadWidth: 16,
+  runoff: 2.5,
+  roadStyle: 'mountain',
+  barrier: 'concrete',
+  barrierColor: 0xc9a27e,
   kerbs: false,
   atmosphere: 'earth',
   defaultTime: 16.8,
@@ -90,7 +107,8 @@ export default {
   landmarks(ctx) {
     const g = new THREE.Group();
     const rock = std(0xa8522e, { flatShading: true, roughness: 1 });
-    const t = ctx.track;
+    // Arches are sized from the flight path, which climbs above the viaduct.
+    const t = ctx.flightTrack;
     const rand = mulberry32(ctx.def.seed);
     for (const u of ARCHES) {
       const i = Math.floor(u * t.count);

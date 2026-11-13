@@ -5,7 +5,8 @@ import { colliderDistance } from '../flight.js';
 
 // Sky world: floating islands above a sea of clouds at golden hour. The
 // course swoops between islands, under overhanging ones and through
-// waterfalls. The cloud deck is the "ground". Flight only.
+// waterfalls. The cloud deck is the "ground". Hop races run on a high
+// road over a ring of islands.
 function makePath() {
   const pts = [];
   const n = 24;
@@ -23,22 +24,52 @@ function makePath() {
 const PATH = makePath();
 const RING = 10;
 
+// Hop races: a high road looping over a ring of islands, joined by short
+// bridges, with open gaps over the clouds to jump.
+function makeRoad() {
+  const pts = [];
+  const n = 28;
+  for (let k = 0; k < n; k++) {
+    const a = (k / n) * Math.PI * 2;
+    const r = 380 + Math.sin(a * 3 + 1.1) * 45;
+    pts.push([Math.sin(a) * r, Math.cos(a) * r - 700, 140 + Math.sin(a * 2) * 12]);
+  }
+  return pts;
+}
+const ROAD = makeRoad();
+const GAPS = [
+  { at: 0.06, length: 18 },
+  { at: 0.2, length: 24, ramp: { length: 24, height: 2.2 } },
+  { at: 0.36, length: 20 },
+  { at: 0.52, length: 28, ramp: { length: 26, height: 2.6 } },
+  { at: 0.7, length: 22 },
+  { at: 0.86, length: 26, ramp: { length: 24, height: 2.4 } },
+];
+
 export default {
   id: 'isles',
   name: 'Cloud Isles',
   tagline: 'Swoop between floating islands',
-  description: 'Islands drift above a sea of cloud. Dive under their roots, cut between them and chase the sunset. Pure flight.',
+  description: 'Islands drift above a sea of cloud. Hop the gaps on the island road, or fly free: dive under their roots and chase the sunset.',
   location: 'Earth',
-  modes: ['flight'],
-  noRoad: true,
+  modes: ['hop', 'flight'],
+  elevated: true,
+  pillars: false,
+  deckColor: 0x9a8f80,
+  goldSpeed: 40,
+  gaps: GAPS,
+  hopRings: [{ at: 0.28, height: 13, radius: 5 }, { at: 0.78, height: 13, radius: 5 }],
   seed: 8307,
   gravity: 9.81,
   laps: 2,
   music: 'chill',
-  points: PATH,
+  points: ROAD,
   flight: { points: PATH, ringRadius: RING, ceiling: 520, laps: 2, goldSpeed: 72, clearance: 4, floor: 8 },
-  roadWidth: 30,
-  runoff: 0,
+  roadWidth: 16,
+  runoff: 2.5,
+  roadStyle: 'mountain',
+  barrier: 'concrete',
+  barrierColor: 0xd8cfc0,
   kerbs: false,
   atmosphere: 'earth',
   defaultTime: 17.9,
@@ -60,8 +91,24 @@ export default {
   landmarks(ctx) {
     const g = new THREE.Group();
     const rand = mulberry32(ctx.def.seed);
-    const t = ctx.track;
+    const t = ctx.flightTrack;
+    const road = ctx.track;
+    const tmp = {};
     const islands = []; // [x, yTop, z, r]
+    // Keep scenery islands clear of the road deck.
+    const nearRoad = (x, z, r) => Math.abs(road.project(x, z, -1, tmp).lateral) < road.wallHalfWidth + r + 12;
+
+    // Islands carrying the road: grass tops just under the deck, spaced so
+    // short bridges join them, and never under a gap.
+    const gapU = GAPS.map((gp) => gp.at);
+    const supports = [];
+    for (let d = 30; d < road.length - 30; d += 80 + rand() * 30) {
+      const u = d / road.length;
+      if (gapU.some((gu) => Math.min(Math.abs(u - gu), 1 - Math.abs(u - gu)) * road.length < 45)) continue;
+      const i = Math.floor(u * road.count);
+      const r = road.wallHalfWidth + 7 + rand() * 10;
+      supports.push([road.pos[i * 3], road.pos[i * 3 + 1] - (ctx.def.deckDepth ?? 1.6) - 0.05, road.pos[i * 3 + 2], r]);
+    }
 
     // Islands along the course, alternating sides; every fifth hangs overhead.
     let k = 0;
@@ -77,7 +124,9 @@ export default {
       } else {
         const side = k % 2 ? 1 : -1;
         const lat = side * (r + RING + 14 + rand() * 30);
-        islands.push([cx + t.right[i * 3] * lat, cy - 20 + rand() * 45, cz + t.right[i * 3 + 2] * lat, r]);
+        const ix = cx + t.right[i * 3] * lat;
+        const iz = cz + t.right[i * 3 + 2] * lat;
+        if (!nearRoad(ix, iz, r)) islands.push([ix, cy - 20 + rand() * 45, iz, r]);
       }
     }
     // Scenery islands further out.
@@ -85,14 +134,18 @@ export default {
     for (let n = 0; n < 110; n++) {
       const x = b.min.x - 600 + rand() * (b.max.x - b.min.x + 1200);
       const z = b.min.z - 600 + rand() * (b.max.z - b.min.z + 1200);
-      islands.push([x, 60 + rand() * 320, z, 12 + rand() * 50]);
+      const r = 12 + rand() * 50;
+      if (!nearRoad(x, z, r)) islands.push([x, 60 + rand() * 320, z, r]);
     }
 
     // Drop any island that would block the course, then register colliders.
     const keep = [];
+    const keepSupports = [];
     const p = new THREE.Vector3();
-    for (const isl of islands) {
-      const cs = islandColliders(ctx, isl);
+    const isSupport = (isl) => supports.includes(isl);
+    for (const isl of [...supports, ...islands]) {
+      const support = isSupport(isl);
+      const cs = isSupport(isl) ? supportColliders(ctx, isl) : islandColliders(ctx, isl);
       let ok = true;
       for (let s = 0; s < t.count && ok; s += 3) {
         const dx = t.pos[s * 3] - isl[0];
@@ -102,27 +155,29 @@ export default {
         for (const c of cs) if (colliderDistance(c, p.x, p.y, p.z) < RING + 6) { ok = false; break; }
       }
       if (!ok) continue;
-      keep.push(isl);
+      (support ? keepSupports : keep).push(isl);
       ctx.collide(...cs);
     }
 
-    // One merged island model, instanced.
-    const geo = islandGeometry(ctx.def.seed);
+    // One merged island model, instanced (road islands have no trees).
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95 });
-    const inst = new THREE.InstancedMesh(geo, mat, keep.length);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const s = new THREE.Vector3();
-    keep.forEach(([x, y, z, r], n) => {
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * Math.PI * 2);
-      s.setScalar(r);
-      m.compose(p.set(x, y, z), q, s);
-      inst.setMatrixAt(n, m);
-    });
-    inst.castShadow = ctx.quality.shadows;
-    inst.receiveShadow = true;
-    inst.computeBoundingSphere();
-    g.add(inst);
+    for (const [list, trees] of [[keep, true], [keepSupports, false]]) {
+      if (!list.length) continue;
+      const inst = new THREE.InstancedMesh(islandGeometry(ctx.def.seed, trees), mat, list.length);
+      list.forEach(([x, y, z, r], n) => {
+        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * Math.PI * 2);
+        s.setScalar(r);
+        m.compose(p.set(x, y, z), q, s);
+        inst.setMatrixAt(n, m);
+      });
+      inst.castShadow = ctx.quality.shadows;
+      inst.receiveShadow = true;
+      inst.computeBoundingSphere();
+      g.add(inst);
+    }
 
     // Waterfalls pouring off a few islands into the clouds.
     const fallMat = new THREE.MeshBasicMaterial({ color: 0xeaf6ff, transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide });
@@ -165,8 +220,16 @@ function islandColliders(ctx, [x, y, z, r]) {
   ];
 }
 
+// A road island's colliders stay under its top, so the deck above is clear.
+function supportColliders(ctx, [x, y, z, r]) {
+  return [
+    ctx.sphere(x, y - 1.05 * r, z, r),
+    ctx.sphere(x, y - 1.5 * r, z, 0.45 * r),
+  ];
+}
+
 // Unit island: jagged rock cone hanging below, grass on top, a few trees.
-function islandGeometry(seed) {
+function islandGeometry(seed, trees = true) {
   const noise = createNoise2D(seed);
   const parts = [];
   const rockC = new THREE.Color(0x7d6a58);
@@ -200,7 +263,7 @@ function islandGeometry(seed) {
   const top = new THREE.CylinderGeometry(1.02, 1, 0.1, 12);
   top.translate(0, -0.05, 0);
   add(top, grassC, 0.15);
-  for (let k = 0; k < 5; k++) {
+  for (let k = 0; k < (trees ? 5 : 0); k++) {
     const a = k * 2.4;
     const r = 0.25 + (k % 3) * 0.2;
     const tree = new THREE.ConeGeometry(0.09, 0.32, 6);

@@ -138,7 +138,7 @@ export function attachMultiplayer(game, THREE) {
 
   mp.on('countdown', ({ settings }) => {
     const flight = settings.vehicleMode !== 'ground';
-    const ok = (w) => flight || !w.modes || w.modes.includes('ground');
+    const ok = (w) => !w.modes || w.modes.includes('ground') || (flight && w.modes.includes('hop'));
     const worldId = worlds.some((w) => w.id === settings.trackId && ok(w)) ? settings.trackId : (worlds.find(ok) || worlds[0]).id;
     const cfg = {
       mode: 'multiplayer',

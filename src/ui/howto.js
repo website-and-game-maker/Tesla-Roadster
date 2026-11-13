@@ -69,10 +69,10 @@ export const controlsFor = (device, vehicle) => (vehicle === 'ground' ? CONTROLS
 
 /** One short line for the start of a race. */
 export const QUICK_HINT = {
-  flight_touch: 'Slide THRUST up. Left stick banks and climbs. Fly through the rings.',
-  flight_touchTilt: 'Slide THRUST up. Tilt to bank. Fly through the rings.',
-  flight_keyboard: 'W for thrust. A D to bank, ↑ ↓ to climb and dive. Fly through the rings.',
-  flight_gamepad: 'RT for thrust. Left stick to bank and climb. Fly through the rings.',
+  flight_touch: 'Drive with GO and steer. Hold JET to hop through the rings.',
+  flight_touchTilt: 'Tilt to steer, hold GO. Hold JET to hop through the rings.',
+  flight_keyboard: 'W to drive, A D to steer. Hold SPACE to fire the jets through the rings.',
+  flight_gamepad: 'RT to drive, left stick to steer. Hold A to fire the jets through the rings.',
   touch: 'Hold GO to drive. Drag on the left side to steer.',
   touchTilt: 'Hold GO to drive. Tilt your device to steer.',
   keyboard: 'W or ↑ to drive. A D or ← → to steer. Space to drift.',

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { fbm, mulberry32, smoothstep } from '../noise.js';
-import { mixHex, std } from './util.js';
+import { mixHex, std, roundedPolygon } from './util.js';
 import { KINDS } from '../props.js';
 
 // Sky world: a dusk skyline of glass towers. The course slaloms down the
@@ -12,6 +12,12 @@ const PATH = [
   [700, -500, 150], [480, -600, 115], [240, -540, 70], [100, -380, 34], [-20, -200, 30],
 ];
 
+// Hop races: an elevated skyway between the towers, broken by gaps to jump.
+const SKYWAY = roundedPolygon([
+  [-80, -250, 38], [-80, 320, 46], [180, 460, 58], [560, 460, 66],
+  [760, 240, 60], [760, -300, 50], [520, -480, 44], [160, -460, 38],
+], 45, 60);
+
 // Where along the course (0..1) the sky bridges cross over the rings.
 const BRIDGES = [0.07, 0.36, 0.52, 0.86];
 
@@ -19,18 +25,30 @@ export default {
   id: 'spires',
   name: 'Skyline Spires',
   tagline: 'Slalom between glass towers at dusk',
-  description: 'Thread the avenues of a city of glass, duck under sky bridges and skim the rooftops. Pure flight.',
+  description: 'Thread the avenues of a city of glass, duck under sky bridges and skim the rooftops, or hop the gaps in the skyway.',
   location: 'Earth',
-  modes: ['flight'],
-  noRoad: true,
+  modes: ['hop', 'flight'],
+  elevated: true,
+  laps: 3,
+  goldSpeed: 36,
+  gaps: [
+    { at: 0.12, length: 22 },
+    { at: 0.33, length: 26, ramp: { length: 24, height: 2.2 } },
+    { at: 0.55, length: 20 },
+    { at: 0.74, length: 30, ramp: { length: 26, height: 2.6 } },
+    { at: 0.9, length: 18 },
+  ],
+  hopRings: [{ at: 0.22, height: 14, radius: 5 }, { at: 0.64, height: 12, radius: 5 }],
   seed: 8101,
   gravity: 9.81,
-  laps: 2,
   music: 'synthwave',
-  points: PATH,
+  points: SKYWAY,
   flight: { points: PATH, ringRadius: 9, ceiling: 420, laps: 2, goldSpeed: 58, clearance: 3 },
-  roadWidth: 30,
-  runoff: 0,
+  roadWidth: 16,
+  runoff: 2.5,
+  roadStyle: 'city',
+  barrier: 'concrete',
+  barrierColor: 0xd6d3cb,
   kerbs: false,
   atmosphere: 'earth',
   defaultTime: 19.3,
@@ -56,7 +74,10 @@ export default {
     const g = new THREE.Group();
     const rand = mulberry32(ctx.def.seed);
     const tmp = {};
-    const track = ctx.track;
+    const road = ctx.track;
+    const track = ctx.flightTrack;
+    // Is (x, z) within `m` metres of the skyway's barriers?
+    const nearRoad = (x, z, m) => Math.abs(road.project(x, z, -1, tmp).lateral) < road.wallHalfWidth + m;
 
     // Sky bridges first, so towers can anchor them and lots can avoid them.
     const anchors = [];
@@ -71,6 +92,14 @@ export default {
       const rz = track.right[i * 3 + 2];
       const yaw = Math.atan2(rx, rz);
       const bottom = cy + 9 + 9;
+      // Skip a bridge that would cut across the skyway deck.
+      let blocked = false;
+      for (let k = 0; k < road.count; k += 2) {
+        const dx = road.pos[k * 3] - cx;
+        const dz = road.pos[k * 3 + 2] - cz;
+        if (dx * dx + dz * dz < 40 * 40 && Math.abs(road.pos[k * 3 + 1] - bottom) < 14) blocked = true;
+      }
+      if (blocked) continue;
       const span = 64;
       const bridge = new THREE.Mesh(new THREE.BoxGeometry(7, 5, span), glass);
       bridge.position.set(cx, bottom + 2.5, cz);
@@ -81,7 +110,11 @@ export default {
       const ez = Math.abs(rz) * span / 2 + Math.abs(rx) * 3.5;
       ctx.collide(ctx.box(cx - ex, bottom, cz - ez, cx + ex, bottom + 5, cz + ez));
       ctx.gate(cx, cy, cz);
-      for (const s of [-1, 1]) anchors.push({ x: cx + rx * 44 * s, z: cz + rz * 44 * s, h: bottom + 30 + rand() * 80, w: 26 });
+      for (const s of [-1, 1]) {
+        const ax = cx + rx * 44 * s;
+        const az = cz + rz * 44 * s;
+        if (!nearRoad(ax, az, 18)) anchors.push({ x: ax, z: az, h: bottom + 30 + rand() * 80, w: 26 });
+      }
     }
 
     // Towers on a grid of lots, skipping lots that would block the course.
@@ -105,6 +138,7 @@ export default {
         let v = rand() < 0.15 + centre * 0.35 ? 2 : rand() < 0.4 + centre * 0.3 ? 1 : rand() < 0.5 ? 0 : 3;
         const half = Math.max(variants[v].w, variants[v].d) * 0.75;
         if (lat < half + 22) continue;
+        if (nearRoad(jx, jz, half + 6)) continue;
         if (anchors.some((a) => Math.hypot(a.x - jx, a.z - jz) < a.w + half + 4)) continue;
         if (rand() < 0.08) continue; // the odd plaza
         lots[v].push([jx, jz, 0.85 + rand() * 0.4 * (0.5 + centre)]);

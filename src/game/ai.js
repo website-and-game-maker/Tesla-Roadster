@@ -26,7 +26,8 @@ export class AIDriver {
     if (Math.sin(this.t * 0.31 + this.seed) > 0.995) this.laneTarget = (Math.random() * 2 - 1) * tr.roadHalf * 0.55;
     // inside line in corners
     const kAhead = tr.curvatureAt(info.dist + 25 + speed * 0.8);
-    let laneGoal = this.laneTarget + clamp(kAhead * 900, -1, 1) * tr.roadHalf * 0.45;
+    // aimLane (set by the jet race) lines up under the next sky ring
+    let laneGoal = this.aimLane != null ? this.aimLane : this.laneTarget + clamp(kAhead * 900, -1, 1) * tr.roadHalf * 0.45;
 
     // avoid the car directly ahead
     for (const o of others) {
