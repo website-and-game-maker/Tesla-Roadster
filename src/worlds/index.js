@@ -42,18 +42,23 @@ const DEFAULT_SURFACES = {
 export const WORLDS = DEFS.map((d, order) => {
   const curve = new THREE.CatmullRomCurve3(d.points.map(([x, z, y = 0]) => new THREE.Vector3(x, y, z)), true, 'centripetal');
   const length = curve.getLength();
-  const modes = d.modes || ['flight', 'ground'];
-  const groundOk = modes.includes('ground');
+  const modes = d.modes || ['flight', 'ground', 'hop'];
+  // Any world with a road has ground-style par times (used by hop races too).
+  const groundOk = !d.noRoad;
   const lapGold = length / (d.goldSpeed || 40);
   const total = lapGold * (d.laps || 3);
   // Flight course length: the hand-made path, or roughly the road length
   // plus the climbs and weaves of a generated path.
   const f = d.flight || {};
-  const flightLength = f.points ? length : length * 1.08;
+  const flightLength = f.points
+    ? new THREE.CatmullRomCurve3(f.points.map(([x, z, y]) => new THREE.Vector3(x, y, z)), true, 'centripetal').getLength()
+    : length * 1.08;
   const flightLaps = f.laps ?? 2;
   const flightLapGold = flightLength / (f.goldSpeed ?? 70);
   return {
-    modes,                        // ['flight', 'ground'] or ['flight'] for sky worlds
+    // 'ground' = plain road race, 'hop' = road race with thruster hops (gaps,
+    // ramps, rings over the road), 'flight' = free flight ring course.
+    modes,
     flight: {
       laps: flightLaps,
       lengthMeters: Math.round(flightLength),
@@ -120,15 +125,22 @@ export function createWorld(id, opts = {}) {
   const { scene, renderer = null } = opts;
   if (!scene) throw new Error('createWorld needs { scene }');
   const quality = getQuality(opts.quality);
-  const modes = def.modes || ['flight', 'ground'];
+  const modes = def.modes || ['flight', 'ground', 'hop'];
   // No mode given: ground where the world has a road (keeps older callers working).
-  const mode = modes.includes(opts.mode) ? opts.mode : modes.includes('ground') ? 'ground' : 'flight';
+  // 'hop' and 'ground' both build the road; worlds with a road default to it.
+  const wanted = opts.mode === 'hop' ? 'ground' : opts.mode;
+  const hasRoad = !def.noRoad;
+  const mode = wanted === 'flight' ? 'flight' : (wanted === 'ground' && hasRoad) || (!wanted && hasRoad) ? 'ground' : 'flight';
   const root = new THREE.Group();
   root.name = `world-${def.id}`;
   scene.add(root);
 
   const noise = createNoise2D(def.seed);
   const track = buildTrackData(def);
+  // Sky worlds have a separate hand-made flight path; landmarks use it to
+  // keep the flying route clear, and the terrain must cover it too.
+  const flightTrack = def.flight?.points ? buildTrackData({ points: def.flight.points, roadWidth: 30, runoff: 0, kerbs: false }) : track;
+  if (flightTrack !== track) track.box.union(flightTrack.box);
   const heightFn = makeHeightFn(def, track, noise);
   const detailMap = detailTexture(quality.textureSize >= 512 ? 512 : 256, quality.anisotropy, def.seed % 97);
 
@@ -173,6 +185,7 @@ export function createWorld(id, opts = {}) {
     box,
     sphere,
     track,
+    flightTrack,
     heightFn,
     quality,
     softDot: softDot(),
@@ -236,7 +249,7 @@ export function createWorld(id, opts = {}) {
     if (!def.noRoad) {
       const p = track.project(x, z, hint, projTmp);
       hint = p.index;
-      if (Math.abs(p.lateral) <= track.wallHalfWidth + 1) {
+      if (Math.abs(p.lateral) <= track.wallHalfWidth + 1 && !p.gap) {
         // Matches the slight crown of the road mesh.
         const a = Math.abs(p.lateral);
         const crown = a < track.roadHalfWidth ? 0.03 * (1 - a / track.roadHalfWidth) : -0.02;
@@ -256,6 +269,7 @@ export function createWorld(id, opts = {}) {
     ringObj.reset();
     root.add(ringObj.mesh);
   }
+  const hopRings = buildHopRings(def, track);
   const flight = course ? {
     // Closed 3D path through the air: t = 0 is the start, increasing t is forward.
     flightCurve: course.curve,
@@ -280,6 +294,9 @@ export function createWorld(id, opts = {}) {
     ambient: sky.hemi,
     mode,
     modes,
+    // Rings for hop races: one over every gap plus hand-placed extras.
+    // [{ position: Vector3, radius }]. Empty when the world has none.
+    hopRings,
     gravity: def.gravity,
     laps: mode === 'flight' ? course.laps : def.laps,
     ...flight,
@@ -406,4 +423,27 @@ function signTex(text, bg = '#111', fg = '#fff', accent = '#e31937') {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+// Rings over each gap (on the arc of a hop) and any hand-placed extras.
+function buildHopRings(def, track) {
+  const out = [];
+  const at = (u, lat, height, radius) => {
+    const i = Math.floor((((u % 1) + 1) % 1) * track.count) % track.count;
+    out.push({
+      position: new THREE.Vector3(
+        track.pos[i * 3] + track.right[i * 3] * lat,
+        track.pos[i * 3 + 1] + height,
+        track.pos[i * 3 + 2] + track.right[i * 3 + 2] * lat,
+      ),
+      // Facing along the road, so the ring stands across it.
+      normal: new THREE.Vector3(track.fwd[i * 3], 0, track.fwd[i * 3 + 2]).normalize(),
+      radius,
+      u: i / track.count,
+    });
+  };
+  for (const g of def.gaps || []) at(g.at, 0, 5 + Math.min(10, g.length * 0.18), 5.5);
+  for (const r of def.hopRings || []) at(r.at, r.lat ?? 0, r.height ?? 8, r.radius ?? 5);
+  out.sort((a, b) => a.u - b.u);
+  return out;
 }

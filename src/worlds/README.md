@@ -6,20 +6,20 @@ loads in well under a second and is identical for every player.
 
 | # | id | World | Modes | Gravity | Unlock (stars) | Feel |
 |---|----|-------|-------|---------|----------------|------|
-| 1 | `coast` | Cypress Coast | flight, ground | 9.81 | 0 | clifftop highway at sunset, lighthouse |
-| 2 | `saltflats` | Salt Flats Speedway | flight, ground | 9.81 | 7 | 2 km straights, top-speed runs, dust storms |
-| 3 | `spires` | Skyline Spires | flight | 9.81 | 14 | slalom between glass towers, under sky bridges |
-| 4 | `city` | Neon Downtown | flight, ground | 9.81 | 22 | night street circuit, 90° corners, wet neon |
-| 5 | `alpine` | Glacier Pass | flight, ground | 9.81 | 29 | hairpins, the flight course dives under a stone arch |
-| 6 | `canyon` | Red Rock Run | flight | 9.81 | 36 | river canyon, natural arches, two pops over the rim |
-| 7 | `launch` | Launch Complex 39 | flight, ground | 9.81 | 43 | loop around a rocket on the pad |
-| 8 | `mars` | Red Planet Rally | flight, ground | 3.71 | 50 | loose regolith, habitat, dust devils |
-| 9 | `isles` | Cloud Isles | flight | 9.81 | 58 | floating islands above a sea of cloud |
-| 10 | `moon` | Tranquility Ring | flight, ground | 1.62 | 65 | black sky, Earth overhead |
+| 1 | `coast` | Cypress Coast | flight, ground, hop | 9.81 | 0 | clifftop highway at sunset, lighthouse |
+| 2 | `saltflats` | Salt Flats Speedway | flight, ground, hop | 9.81 | 7 | 2 km straights, top-speed runs, dust storms |
+| 3 | `spires` | Skyline Spires | hop, flight | 9.81 | 14 | skyway between glass towers, under sky bridges |
+| 4 | `city` | Neon Downtown | flight, ground, hop | 9.81 | 22 | night street circuit, 90° corners, wet neon |
+| 5 | `alpine` | Glacier Pass | flight, ground, hop | 9.81 | 29 | hairpins, the flight course dives under a stone arch |
+| 6 | `canyon` | Red Rock Run | hop, flight | 9.81 | 36 | viaduct over a river canyon, natural arches, two pops over the rim |
+| 7 | `launch` | Launch Complex 39 | flight, ground, hop | 9.81 | 43 | loop around a rocket on the pad |
+| 8 | `mars` | Red Planet Rally | flight, ground, hop | 3.71 | 50 | loose regolith, habitat, dust devils |
+| 9 | `isles` | Cloud Isles | hop, flight | 9.81 | 58 | island road with open gaps above a sea of cloud |
+| 10 | `moon` | Tranquility Ring | flight, ground, hop | 1.62 | 65 | black sky, Earth overhead |
 
 Unlocks: each world offers up to 12 stars (4 career events x 3), and a world
 opens at about 60% of the stars available before it (`unlock = round(order * 7.2)`).
-Flight-only worlds have no road: filter `WORLDS` by `modes` before offering ground races.
+Every world has a road. Spires, canyon and isles offer hop and flight but no plain ground race: filter `WORLDS` by `modes`.
 
 Preview any world, mode, quality tier, time of day and weather at
 `worlds-preview.html?world=mars&mode=flight&quality=high&time=18&weather=dust`.
@@ -49,7 +49,7 @@ world.update(dt, carPosition, camera);
 - Heading convention: forward vector is `(sin h, 0, cos h)`, so `object.rotation.y = heading` for a model facing +Z.
 
 ### Flight mode
-`createWorld(id, { ..., mode: 'flight' | 'ground' })`. Without `mode`, worlds with a road start in ground mode.
+`createWorld(id, { ..., mode: 'flight' | 'ground' | 'hop' })`. Without `mode`, every world starts on its road.
 
 - `world.flightCurve`: closed 3D `CatmullRomCurve3`; `t = 0` is the start, increasing `t` is forward. `world.flightLength` (m), `world.flightLaps`.
 - `world.rings`: `[{ index, position, quaternion, normal, radius, t, distance }]`, 80 to 150 m apart (closer where the path twists). The ring's plane faces along the path (`normal` = path tangent; quaternion rotates +Z onto it). Rings sit under bridges and arches, between towers and islands.
@@ -60,6 +60,15 @@ world.update(dt, carPosition, camera);
 - `world.ceiling` (max altitude, m), `world.spawn` (`{ position, heading, pitch }` just behind the first ring), `world.groundSpawn` (on the road).
 - `WORLDS[i].modes` and `WORLDS[i].flight = { laps, lengthMeters, ceiling, par }`; `starsForTime(id, seconds, 'flight')`.
 - Every course is checked to keep each ring clear of terrain and colliders; a fix-up pass lifts any part of a generated path that would clip something.
+
+### Hop mode
+The car drives the road and fires short thruster hops. `createWorld(id, { mode: 'hop' })` builds the same road world as `'ground'`.
+
+- Gaps: `world.getTrackInfo(...).gap` is true over an open gap, and `world.getGroundHeight` there returns the terrain, water or cloud deck far below (at least 20 m under the road on every world), so a car that misses falls.
+- Ramps are part of the road height (`getGroundHeight` and `getTrackInfo().height`); a gap's ramp ends at its lip. `trackCurve` itself does not include ramps.
+- `world.hopRings`: `[{ position, normal, radius, u }]`, one over each gap plus a few hand-placed ones, 8 to 14 m above the road, sorted by `u` (0..1 along the lap). `normal` faces along the road.
+- Elevated worlds (`spires`, `canyon`, `isles`) put the road on a deck with pillars or islands under it.
+- Defining it in a world def: `gaps: [{ at, length, ramp?: { length, height } }]`, `ramps: [{ at, length, height }]`, `hopRings: [{ at, lat?, height?, radius? }]`, `elevated`, `deckColor`, `pillars`, `pillarSpacing`.
 
 ### Physics inputs
 - `world.gravity` (m/s²): 9.81 on Earth, 3.71 Mars, 1.62 Moon.

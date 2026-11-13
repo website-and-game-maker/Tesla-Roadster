@@ -28,7 +28,7 @@
   <h1 id="title">World preview</h1>
   <p id="desc"></p>
   <label>World <select id="world"></select></label>
-  <label>Mode <select id="mode"><option value="flight">Flight</option><option value="ground">Ground</option></select></label>
+  <label>Mode <select id="mode"><option value="flight">Flight</option><option value="ground">Ground</option><option value="hop">Hop</option></select></label>
   <label>Quality <select id="quality"><option>low</option><option>medium</option><option selected>high</option><option>ultra</option></select></label>
   <label>Time <input id="time" type="range" min="0" max="24" step="0.1"></label>
   <label>Weather <select id="weather"></select></label>
@@ -82,6 +82,7 @@ let dist = 0;
 let chase = true;
 const info = {};
 
+let hopGroup = null;
 function build() {
   $('loading').hidden = false;
   setTimeout(() => {
@@ -101,7 +102,20 @@ function build() {
     const fl = world.mode === 'flight';
     const par = fl ? meta.flight.par : meta.par;
     $('desc').textContent = `${meta.description} ${fl ? Math.round(world.flightLength) + ' m flight course, ' + world.rings.length + ' rings, ' + world.colliders.length + ' colliders' : meta.lengthMeters + ' m lap'}, ${world.laps} laps, gravity ${meta.gravity} m/s², gold ${par.gold}s. Built in ${ms.toFixed(0)} ms.`;
-    $('mode').value = world.mode;
+    $('mode').value = $('mode').value === 'hop' && world.mode === 'ground' ? 'hop' : world.mode;
+    // Hop rings over the gaps (the game draws its own; these are a preview).
+    if (hopGroup) scene.remove(hopGroup);
+    hopGroup = new THREE.Group();
+    if (!fl) {
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0x36e0ff, toneMapped: false });
+      for (const r of world.hopRings) {
+        const m = new THREE.Mesh(new THREE.TorusGeometry(r.radius, 0.35, 8, 32), ringMat);
+        m.position.copy(r.position);
+        if (r.normal) m.lookAt(r.position.clone().add(r.normal));
+        hopGroup.add(m);
+      }
+    }
+    scene.add(hopGroup);
     $('time').value = world.timeOfDay;
     $('weather').innerHTML = '';
     for (const w of world.weathers) $('weather').add(new Option(w, w));
@@ -148,7 +162,8 @@ function frame() {
     const lat = Math.sin(dist * 0.01) * world.roadHalfWidth * 0.4;
     x = p.x + ti.right[0] * lat;
     z = p.z + ti.right[2] * lat;
-    car.position.set(x, world.getGroundHeight(x, z), z);
+    // Sail over gaps along the curve instead of dropping in.
+    car.position.set(x, ti.gap ? p.y : world.getGroundHeight(x, z), z);
   }
   car.rotation.y = Math.atan2(fwd.x, fwd.z);
   car.rotation.x = -Math.asin(Math.max(-1, Math.min(1, fwd.y)));
