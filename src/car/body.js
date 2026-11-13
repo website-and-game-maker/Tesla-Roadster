@@ -55,9 +55,11 @@ export const CLASSIC = {
   spoiler: [-2.03, -1.83],
   shut: [[0.50, -0.5, 0.62], [-0.45, -0.5, 0.75], [1.62, 0.85, Math.PI / 2]],
   fins: true,
+  // Twin speedster fairings behind the seats.
+  fairings: [{ x: 0.34, z: -1.02, w: 0.2, h: 0.13, l: 0.42 }, { x: -0.34, z: -1.02, w: 0.2, h: 0.13, l: 0.42 }],
   /** Extra surface detail: returns [x offset, colour] for a skin vertex. */
   decorate(z, th, c) {
-    let dx = 0;
+    let dx = sideScallop(z, th, 0.95, -0.55, 0.016);
     // Side air scoop behind the door.
     const scoop = smoothstep(-0.80, -0.74, z) * smoothstep(-0.48, -0.56, z)
       * smoothstep(-0.18, -0.08, th) * smoothstep(0.42, 0.3, th);
@@ -76,6 +78,20 @@ export const CLASSIC = {
 };
 
 export const C_PAINT = 1, C_TRIM = 0.035, C_INNER = 0.012;
+
+/**
+ * A long concave sweep down the flank (from behind the front wheel toward
+ * the rear intake). It catches light and shadow so the side doesn't read as
+ * one flat slab. Returns an x offset (negative = pushed in).
+ */
+export function sideScallop(z, th, zFront, zRear, depth) {
+  const along = smoothstep(zFront, zFront - 0.25, z) * smoothstep(zRear, zRear + 0.35, z);
+  // Band sits below the shoulder; it rises slightly toward the rear.
+  const mid = lerp(-0.08, 0.06, smoothstep(zFront, zRear, z));
+  const d = (th - mid) / 0.17;
+  const band = Math.exp(-d * d * 2.2);
+  return -depth * along * band;
+}
 export const WELL_X = 0.62;
 
 /** Mirrors a right-side geometry to the left, keeping faces outward. */
@@ -210,6 +226,8 @@ export function createShape(S) {
     const col = new Float32Array(zs.length * ring * 3);
     const axles = [DIM.front, DIM.rear].map((a) => ({ z: a.z, y: a.r, R: a.r + 0.045 }));
     const cuts = new Float32Array(zs.length * ring);
+    // UVs (for the paint's metallic-flake map): u along the car, v around it.
+    const uvs = new Float32Array(zs.length * ring * 2);
 
     let k = 0;
     for (const zRing of zs) {
@@ -255,6 +273,7 @@ export function createShape(S) {
         c = Math.min(c, lerp(C_PAINT, C_INNER, smoothstep(-1.05, -1.25, th)));
 
         pos[k * 3] = x * side; pos[k * 3 + 1] = y; pos[k * 3 + 2] = z;
+      uvs[k * 2] = z * 0.5; uvs[k * 2 + 1] = (th + Math.PI / 2) * 0.35 * side;
         col[k * 3] = col[k * 3 + 1] = col[k * 3 + 2] = c;
         k++;
       }
@@ -272,6 +291,7 @@ export function createShape(S) {
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     g.setAttribute('cut', new THREE.BufferAttribute(cuts, 1));
+    g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
     g.setIndex(idx);
     g.computeVertexNormals();
     return g;

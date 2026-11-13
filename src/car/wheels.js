@@ -63,7 +63,7 @@ function sectorHole(r0, r1, a0, a1, skew, n) {
 }
 
 const STYLES = {
-  aero: { n: 5, r0: 0.128, r1: 0.214, gap: 0.42, skew: 0.38 },
+  aero: { n: 7, r0: 0.105, r1: 0.218, gap: 0.42, skew: 0.55 },
   sport: { n: 10, r0: 0.082, r1: 0.226, gap: 0.6, skew: 0.0 },
   blade: { n: 14, r0: 0.09, r1: 0.226, gap: 0.5, skew: 0.5 },
 };
@@ -75,7 +75,7 @@ function rimFaceGeometry(style, q) {
     const L = LEVEL[q];
     const shape = new THREE.Shape();
     shape.absarc(0, 0, 0.247, 0, Math.PI * 2, false);
-    if (q !== 'low') {
+    {
       const step = (Math.PI * 2) / S.n;
       for (let i = 0; i < S.n; i++) {
         const c = i * step;
@@ -83,7 +83,7 @@ function rimFaceGeometry(style, q) {
       }
     }
     const g = new THREE.ExtrudeGeometry(shape, {
-      depth: 0.018, bevelEnabled: q !== 'low', bevelThickness: 0.008, bevelSize: 0.006,
+      depth: 0.03, bevelEnabled: q !== 'low', bevelThickness: 0.012, bevelSize: 0.007,
       bevelSegments: q === 'high' ? 3 : 1, curveSegments: L.curve * 4,
     });
     g.rotateY(Math.PI / 2); // extrude +Z → +X
@@ -112,6 +112,14 @@ function caliperGeometry(q) {
     const g = new THREE.TorusGeometry(0.175, 0.03, 6, q === 'high' ? 12 : 6, 0.85);
     g.scale(1, 1, 1.5);
     g.rotateY(Math.PI / 2); // ring around the X axis
+    return g;
+  });
+}
+
+function lugGeometry() {
+  return cached('lug', () => {
+    const g = new THREE.CylinderGeometry(0.011, 0.013, 0.03, 6);
+    g.rotateZ(-Math.PI / 2);
     return g;
   });
 }
@@ -148,11 +156,13 @@ export function buildWheel(axle, side, wheelSpec, mats, q) {
 
   const tire = new THREE.Mesh(tireGeometry(R, W, q), mats.tire);
   spin.add(tire);
-  if (q !== 'low') {
+  {
     spin.add(new THREE.Mesh(barrelGeometry(W, q), mats.barrel));
-    const lip = new THREE.Mesh(lipGeometry(q), mats.chrome);
-    lip.position.x = W / 2 - 0.022;
-    spin.add(lip);
+    if (q !== 'low') {
+      const lip = new THREE.Mesh(lipGeometry(q), mats.chrome);
+      lip.position.x = W / 2 - 0.022;
+      spin.add(lip);
+    }
     const disc = new THREE.Mesh(discGeometry(q), mats.disc);
     disc.position.x = -0.03;
     spin.add(disc);
@@ -182,5 +192,12 @@ export function setRimStyle(wheel, wheelSpec, mats, q, W = wheel.W) {
     const cap = new THREE.Mesh(capGeometry(q), mats.gloss);
     cap.position.x = W / 2 - 0.02;
     face.add(cap);
+    // Five lug nuts around the hub.
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + 0.3;
+      const lug = new THREE.Mesh(lugGeometry(), mats.lug);
+      lug.position.set(W / 2 - 0.025, Math.sin(a) * 0.068, Math.cos(a) * 0.068);
+      face.add(lug);
+    }
   }
 }

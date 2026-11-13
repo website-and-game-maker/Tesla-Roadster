@@ -9,7 +9,7 @@
 //   • Wheels tilt flat and tuck up in flight, showing glowing hover rings.
 
 import * as THREE from 'three';
-import { createShape, mirrorX, C_PAINT, C_TRIM } from './body.js';
+import { createShape, mirrorX, sideScallop, C_PAINT, C_TRIM } from './body.js';
 import { lerp, smoothstep } from './curves.js';
 
 const DIM_ROCKET = {
@@ -26,14 +26,15 @@ export const ROCKET = {
   DIM: DIM_ROCKET,
   zRear: -2.20, zFront: 2.20, zMin: -2.25, zMax: 2.235,
   top: [[-2.20, 0.70], [-2.05, 0.78], [-1.7, 0.82], [-1.26, 0.83], [-0.9, 0.81], [-0.5, 0.75],
-    [0.0, 0.73], [0.5, 0.74], [0.9, 0.75], [1.27, 0.74], [1.6, 0.66], [1.9, 0.54], [2.08, 0.43], [2.20, 0.33]],
+    [0.0, 0.73], [0.5, 0.73], [0.9, 0.72], [1.27, 0.69], [1.6, 0.6], [1.9, 0.48], [2.08, 0.38], [2.20, 0.3]],
   bottom: [[-2.20, 0.30], [-2.0, 0.18], [-1.7, 0.13], [1.6, 0.13], [2.0, 0.16], [2.20, 0.2]],
   half: [[-2.20, 0.86], [-2.05, 0.96], [-1.7, 1.02], [-1.26, 1.04], [-0.8, 0.98], [-0.3, 0.93],
-    [0.3, 0.93], [0.8, 0.95], [1.27, 0.975], [1.7, 0.92], [2.0, 0.78], [2.20, 0.55]],
+    [0.3, 0.93], [0.8, 0.95], [1.27, 0.975], [1.7, 0.92], [2.0, 0.76], [2.20, 0.5]],
   shoulder: [[-2.2, 0.55], [-1.26, 0.6], [0, 0.55], [1.27, 0.6], [2.2, 0.45]],
   nUpper: [[-2.2, 5], [-1.26, 5], [0, 3.6], [1.27, 4.5], [2.2, 2.6]],
   nLower: 5,
-  bulge: [[-2.2, 0], [-2.05, 0.04], [-1.26, 0.095], [-0.55, 0], [0.55, 0], [1.27, 0.08], [1.95, 0.02], [2.2, 0]],
+  // Big rear haunches and tall front fenders over a low, wedge-shaped hood.
+  bulge: [[-2.2, 0], [-2.05, 0.05], [-1.26, 0.11], [-0.55, 0], [0.55, 0], [1.27, 0.11], [1.95, 0.03], [2.2, 0]],
   capFront: [[2.20, 1], [2.215, 0.9], [2.226, 0.65], [2.232, 0.3], [2.235, 0]],
   capRear: [[-2.25, 0], [-2.245, 0.45], [-2.235, 0.8], [-2.22, 0.95], [-2.20, 1]],
   cockpit: { z0: -0.8, z1: 0.55, halfW: 0.6, floor: 0.4 },
@@ -48,8 +49,12 @@ export const ROCKET = {
   spoiler: null,
   shut: [[0.62, -0.5, 0.55], [-0.6, -0.5, 0.7]],
   fins: false,
+  yoke: true,
+  mirror: [0.84, 0.86, 0.62],
+  // Dorsal spine running from the canopy to the tail.
+  fairings: [{ x: 0, z: -1.72, w: 0.07, h: 0.1, l: 0.42 }],
   decorate(z, th, c) {
-    let dx = 0;
+    let dx = sideScallop(z, th, 0.9, -0.85, 0.022);
     // Long blade intake feeding the thrusters, behind the door.
     const blade = smoothstep(-1.0, -0.92, z) * smoothstep(-0.5, -0.6, z)
       * smoothstep(-0.25, -0.14, th) * smoothstep(0.3, 0.18, th);
@@ -131,6 +136,22 @@ export function rocketGeometry(q) {
   const side = sh.bodyPoint(cz, 0.05);
   g.canardHinge = new THREE.Vector3(side[0] + 0.006, side[1], 0);
   g.tipLight = new THREE.BoxGeometry(0.02, 0.016, 0.18);
+  // Wingtip light trails: a ribbon from the tip backward, fading out.
+  g.trail = new THREE.PlaneGeometry(0.03, 1, 1, 1).rotateX(-Math.PI / 2).translate(0, 0, -0.5);
+  // Front splitter blade and rear diffuser strakes (carbon).
+  const sp = new THREE.Shape();
+  sp.moveTo(-0.72, 0); sp.lineTo(0.72, 0); sp.lineTo(0.6, 0.22); sp.quadraticCurveTo(0, 0.3, -0.6, 0.22); sp.closePath();
+  g.splitter = new THREE.ExtrudeGeometry(sp, { depth: 0.018, bevelEnabled: false, curveSegments: q === 'high' ? 8 : 3 }).rotateX(Math.PI / 2);
+  g.strake = new THREE.BoxGeometry(0.012, 0.12, 0.42);
+  // Light bar across the nose, joining the headlamps.
+  const pts = [];
+  for (let i = 0; i <= 16; i++) {
+    const th = lerp(0.62, Math.PI / 2, i / 16);
+    const p = sh.surf(2.115, th, 0.004);
+    pts.push(p);
+  }
+  const bar = [...pts, ...pts.slice(0, -1).reverse().map((p) => new THREE.Vector3(-p.x, p.y, p.z))];
+  g.lightBar = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(bar), q === 'high' ? 48 : 16, 0.007, 4, false);
   g.hoverRing = new THREE.TorusGeometry(0.3, 0.016, 6, seg).rotateY(Math.PI / 2);
   g.wheelJet = flameGeometry(0.27, seg).rotateX(-Math.PI / 2); // points down
   cache.set(q, g);
@@ -149,7 +170,16 @@ function m(geo, mat, shadow = false) {
  */
 export function addRocketParts(root, q, mats, wheels) {
   const g = rocketGeometry(q);
-  const out = { wings: [], canards: [], flames: [], ventFlames: [], lights: [], rings: [], wheelJets: [] };
+  const out = { wings: [], canards: [], flames: [], ventFlames: [], lights: [], rings: [], wheelJets: [], trails: [] };
+  root.add(m(g.lightBar, mats.headlight));
+  const split = m(g.splitter, mats.carbon, true);
+  split.position.set(0, 0.16, 1.9);
+  root.add(split);
+  for (const x of [-0.78, -0.22, 0.22, 0.78]) {
+    const st = m(g.strake, mats.carbon);
+    st.position.set(x, 0.27, -2.02);
+    root.add(st);
+  }
 
   for (const t of THRUSTERS) {
     const grp = new THREE.Group();
@@ -204,7 +234,12 @@ export function addRocketParts(root, q, mats, wheels) {
     const wing = m(g.wing, mats.paint, true);
     const tip = m(g.tipLight, mats.thrusterGlow);
     tip.position.set(0.47, -0.006, -1.76);
-    hinge.add(wing, tip);
+    const trail = m(g.trail, mats.flameOuter);
+    trail.position.set(0.48, -0.006, -1.86);
+    trail.renderOrder = 5;
+    trail.visible = false;
+    out.trails.push(trail);
+    hinge.add(wing, tip, trail);
     root.add(hinge);
     out.wings.push(hinge);
 
@@ -244,12 +279,13 @@ const CANARD_STOWED = Math.PI, CANARD_OUT = 0.05;
  */
 export function animateRocket(parts, wheels, flight, thrust, boost, t) {
   // Wings flip out first; canards follow a little later.
-  const fw = smoothstep(0, 0.7, flight), fc = smoothstep(0.2, 0.9, flight);
+  // Sequence: wheels fold first, then the wings flip out, canards last.
+  const fw = smoothstep(0.25, 0.85, flight), fc = smoothstep(0.45, 1, flight);
   for (const w of parts.wings) { w.rotation.z = lerp(WING_STOWED, WING_OUT, fw); w.visible = fw > 0.001; }
   for (const c of parts.canards) { c.rotation.z = lerp(CANARD_STOWED, CANARD_OUT, fc); c.visible = fc > 0.001; }
 
   // Wheels: tilt flat (outer face down) and tuck up/in.
-  const fwheel = smoothstep(0.1, 1, flight);
+  const fwheel = smoothstep(0, 0.6, flight);
   for (const w of wheels) {
     const s = w.pivot.position.x > 0 ? 1 : -1;
     w.pivot.rotation.z = -s * fwheel * Math.PI / 2;
@@ -272,6 +308,10 @@ export function animateRocket(parts, wheels, flight, thrust, boost, t) {
   for (const j of parts.wheelJets) {
     j.visible = fwheel > 0.3;
     j.scale.y = (0.12 + lift * 0.4) * fl;
+  }
+  for (const tr of parts.trails) {
+    tr.visible = fw > 0.9 && thrust > 0.15;
+    tr.scale.z = 0.4 + thrust * 2.2 + (boost ? 1.5 : 0);
   }
   for (const l of parts.lights) l.intensity = (thrust * 6 + (boost ? 10 : 0)) * fl;
   for (const r of parts.rings) r.visible = flight > 0.05;
