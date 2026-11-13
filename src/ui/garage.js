@@ -7,7 +7,9 @@ const capture = (el, id) => { try { el.setPointerCapture(id); } catch { /* ignor
 
 export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_PAINTS, wheels = DEFAULT_WHEELS, getQuality } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, getQuality?.() === 'low' ? 1 : 2));
+  // Low quality still gets 1.5x so the hero car stays crisp; the showroom is one car, so it's cheap.
+  const pixelRatio = () => Math.min(devicePixelRatio, getQuality?.() === 'low' ? 1.5 : 2);
+  renderer.setPixelRatio(pixelRatio());
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
@@ -85,7 +87,7 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
   const look = new THREE.Vector3(...shot.look), lookTarget = look.clone();
 
   // Car
-  let car = null, carSpec = { paint: paints[0]?.id, wheels: wheels[0]?.id };
+  let car = null, carSpec = { paint: paints[0]?.id, wheels: wheels[0]?.id, model: undefined };
   const findPaint = (id) => paints.find((p) => p.id === id) || paints[0];
   const findWheel = (id) => wheels.find((w) => w.id === id) || wheels[0];
 
@@ -99,7 +101,7 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
     handle = null; car = null;
     if (buildCarModel) {
       try {
-        const res = buildCarModel({ THREE, paint: paint.id, wheels: wheel.id, quality: q3(), showroom: true });
+        const res = buildCarModel({ THREE, model: carSpec.model, paint: paint.id, wheels: wheel.id, quality: q3(), showroom: true });
         if (res?.isObject3D) car = res;
         else if (res?.object?.isObject3D) { handle = res; car = res.object; }
       } catch (e) { console.warn('[ui] car model failed, using placeholder:', e); }
@@ -161,8 +163,11 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
     tgtDist = Math.max(DIST_MIN, Math.min(DIST_MAX, tgtDist * Math.exp(e.deltaY * 0.0015)));
   }, { passive: false });
 
+  let sizeKey = '';
   function resize() {
-    const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight;
+    const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight, pr = pixelRatio();
+    sizeKey = `${w}x${h}@${pr}`;
+    renderer.setPixelRatio(pr);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     // On narrow/portrait screens pull back so the whole car fits.
@@ -176,6 +181,8 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
     if (!running) return;
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - t0) / 1000); t0 = now;
+    // Catch layout changes and graphics-preset switches that fire no window resize.
+    if (sizeKey !== `${canvas.clientWidth || innerWidth}x${canvas.clientHeight || innerHeight}@${pixelRatio()}`) resize();
     if (!dragging) {
       // Inertia: velocities decay smoothly after release.
       const decay = Math.pow(0.02, dt);
@@ -223,9 +230,12 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
       shot = next; userControlled = false; idleT = 0;
       tgtPitch = shotPitch(shot); tgtDist = shot.dist;
     },
-    setCar({ paint, wheels: wh } = {}) {
+    /** A new body (model) rebuilds the whole car; paint and wheels swap in place. */
+    setCar({ paint, wheels: wh, model } = {}) {
+      const mc = model && model !== carSpec.model;
       const pc = paint && paint !== carSpec.paint, wc = wh && wh !== carSpec.wheels;
-      if (paint) carSpec.paint = paint; if (wh) carSpec.wheels = wh;
+      if (paint) carSpec.paint = paint; if (wh) carSpec.wheels = wh; if (model) carSpec.model = model;
+      if (mc) { makeCar(); return; }
       if (pc) applyPaint(); if (wc) applyWheels();
     },
     setCatalog(p, w) { if (p) paints = p; if (w) wheels = w; makeCar(); },

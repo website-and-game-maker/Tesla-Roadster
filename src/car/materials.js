@@ -69,6 +69,33 @@ function tireNormalMap() {
   return tireNormal;
 }
 
+let flakeTex = null;
+/**
+ * Metallic-flake normal map: fine random speckle. Under a smooth clearcoat it
+ * gives the paint a subtle sparkle that changes as the car turns.
+ */
+function flakeNormalMap() {
+  if (flakeTex || typeof document === 'undefined') return flakeTex;
+  const N = 256;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = N;
+  const g = cv.getContext('2d');
+  const img = g.createImageData(N, N);
+  let seed = 1337;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < N * N; i++) {
+    img.data[i * 4] = 128 + (rnd() - 0.5) * 150;
+    img.data[i * 4 + 1] = 128 + (rnd() - 0.5) * 150;
+    img.data[i * 4 + 2] = 255;
+    img.data[i * 4 + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  flakeTex = new THREE.CanvasTexture(cv);
+  flakeTex.wrapS = flakeTex.wrapT = THREE.RepeatWrapping;
+  flakeTex.repeat.set(14, 14);
+  return flakeTex;
+}
+
 let blobTex = null;
 /** Soft radial shadow used under the car when real shadows are off. */
 export function contactShadowTexture() {
@@ -112,6 +139,11 @@ export function applyPaint(mat, paint) {
     mat.clearcoatRoughness = 0.04;
     mat.iridescence = paint.iridescence ?? 0;
     mat.iridescenceIOR = 1.5;
+    // Flakes only show in metallic paints; solid and matte stay clean.
+    const flake = paint.metalness > 0.3 ? 0.06 + paint.metalness * 0.1 : 0;
+    mat.normalMap = flake > 0 ? flakeNormalMap() : null;
+    mat.normalScale.set(flake, flake);
+    mat.sheen = paint.sheen ?? 0;
   }
   mat.needsUpdate = true;
 }
@@ -140,14 +172,16 @@ export function createMaterials(quality, paintId, wheelId, caliper = 'red') {
     paint,
     rim,
     glass: new Phys({
-      color: 0x0c1014, metalness: 0, roughness: 0.04, transparent: true, opacity: 0.55,
-      ...(hi ? { clearcoat: 1, clearcoatRoughness: 0.02 } : {}), envMapIntensity: 1.4,
+      color: 0x070b10, metalness: 0.1, roughness: 0.03, transparent: true, opacity: 0.68,
+      ...(hi ? { clearcoat: 1, clearcoatRoughness: 0.01 } : {}), envMapIntensity: 2.2,
     }),
     gloss: new Phys({ color: 0x050506, metalness: 0.2, roughness: 0.18, ...(hi ? { clearcoat: 1 } : {}) }),
     trim: new THREE.MeshStandardMaterial({ color: 0x0b0b0c, metalness: 0.1, roughness: 0.6 }),
     interior: new THREE.MeshStandardMaterial({ color: 0x18181a, roughness: 0.8 }),
     seat: new THREE.MeshStandardMaterial({ color: 0x2a2b2e, roughness: 0.7 }),
     chrome: new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 1, roughness: 0.08 }),
+    carbon: new THREE.MeshStandardMaterial({ color: 0x141518, metalness: 0.4, roughness: 0.35, normalMap: hi ? flakeNormalMap() : null, normalScale: new THREE.Vector2(0.3, 0.3) }),
+    lug: new THREE.MeshStandardMaterial({ color: 0x9a9da2, metalness: 1, roughness: 0.25 }),
     tire: new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.92, normalMap: hi ? tireNormalMap() : null }),
     barrel: new THREE.MeshStandardMaterial({ color: 0x2a2b2e, metalness: 0.9, roughness: 0.45 }),
     disc: new THREE.MeshStandardMaterial({ color: 0x6d6e70, metalness: 0.95, roughness: 0.38 }),

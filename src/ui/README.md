@@ -44,3 +44,9 @@ Graphics helpers: `detectQuality()`, `resolveGraphics(settings)`, `createAdaptiv
 - First launch shows a Welcome card that starts the tutorial (or skips it). It is shown while `settings.tutorialSeen` and `profile.tutorialDone` are both false. Replay it from `?` or Settings > Gameplay.
 - Fly / Drive is chosen at the top of the Play screen. It changes the mode descriptions, filters Career events (`event.vehicleMode`) and tracks (`track.modes`), lifts the showroom car into a hover in Fly, and emits `vehiclemode` plus `settings`.
 - The `?` opens a help overlay with controls for the current device and vehicle (also "Controls" in the pause menu). The old How to play screen and the first-race gate are gone.
+
+### Car bodies (Body tab)
+
+Pass `opts.models = [{ id, name, flight }]` to `createUI`. The garage gets a **Body** tab (first tab) with one card per body; `flight: false` shows "Drives only". Bodies are free. Equipping one saves `settings.car.model`, emits `'equip'` with the whole car (`{ model, paint, wheels, ... }`), and rebuilds the showroom car. `carPayload()` (sent with `start`, `multiplayer` and `lobby`) includes `model`. `ui.showroom.setCar({ model })` rebuilds the car when the model changes, and `buildCarModel` receives `model`. A `car.model` in `ui.setProfile()` is adopted silently. The main menu's hero label shows the equipped body's name. Without `opts.models` nothing changes.
+
+The showroom renders at `min(devicePixelRatio, 1.5)` on the low preset and `min(devicePixelRatio, 2)` otherwise, and re-checks its size every frame, so preset switches and layout changes take effect without a window resize.
