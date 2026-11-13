@@ -67,6 +67,15 @@ export function unpackState(w) {
 /** Visual flag bits for `fx`. */
 export const FX = { BRAKE: 1, DRIFT: 2, BOOST: 4, HEADLIGHTS: 8, HORN: 16 };
 
+const NAME_COLORS = ['Teal', 'Amber', 'Coral', 'Indigo', 'Lime', 'Ruby', 'Silver', 'Sky', 'Mint', 'Plum', 'Gold', 'Ocean'];
+const NAME_ANIMALS = ['Otter', 'Falcon', 'Panda', 'Fox', 'Koala', 'Gecko', 'Puffin', 'Lynx', 'Dolphin', 'Badger', 'Heron', 'Comet'];
+/** A made-up driver name from fixed word lists, the same for the same seed. */
+export function madeUpName(seed) {
+  let h = 2166136261;
+  for (const ch of String(seed || Math.random())) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  return `${NAME_COLORS[h % NAME_COLORS.length]} ${NAME_ANIMALS[(h >>> 8) % NAME_ANIMALS.length]}`;
+}
+
 const NAME_MAX = 16;
 export function cleanName(name) {
   const n = String(name || '')

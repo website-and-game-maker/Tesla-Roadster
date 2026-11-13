@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ClockSync } from '../../src/multiplayer/clock.js';
 import { SnapshotBuffer, hermite, slerp } from '../../src/multiplayer/interpolation.js';
-import { computeOrder, makeRoomCode, isValidRoomCode, normalizeRoomCode, packState, cleanName } from '../../src/multiplayer/protocol.js';
+import { computeOrder, makeRoomCode, isValidRoomCode, normalizeRoomCode, packState, cleanName, madeUpName } from '../../src/multiplayer/protocol.js';
 import { LoopbackNetwork, LoopbackTransport } from '../../src/multiplayer/transport.js';
 import { Multiplayer } from '../../src/multiplayer/index.js';
 import { createLeaderboard, bestPerPlayer } from '../../src/multiplayer/leaderboard.js';
@@ -31,11 +31,11 @@ function memStorage() {
   return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) };
 }
 
-function makePlayers(n, net = new LoopbackNetwork({ latencyMs: 3, jitterMs: 4 })) {
+function makePlayers(n, net = new LoopbackNetwork({ latencyMs: 3, jitterMs: 4 }), cfg = fastCfg) {
   return Array.from({ length: n }, (_, i) =>
     new Multiplayer(
       { name: `P${i}`, color: '#11223' + i },
-      { config: fastCfg, transport: new LoopbackTransport(net, fastCfg), storage: memStorage(), fetchImpl: null },
+      { config: cfg, transport: new LoopbackTransport(net, fastCfg), storage: memStorage(), fetchImpl: null },
     ),
   );
 }
@@ -272,4 +272,22 @@ test('supabase leaderboard: correct REST calls, falls back to local offline', as
   const local = await lb.top('coast');
   assert.equal(local[0].name, 'Ada');
   assert.equal((await lb.submit({ trackId: 'coast', lapMs: 60000, name: 'Ada' })).uploaded, false);
+});
+
+test('kid-safe rooms: made-up names only, and chat never arrives', async () => {
+  assert.match(madeUpName('abc'), /^[A-Z][a-z]+ [A-Z][a-z]+$/);
+  assert.equal(madeUpName('abc'), madeUpName('abc'));
+  const [host, g1] = makePlayers(2, undefined, { ...fastCfg, kidSafe: true });
+  const code = await host.hostRoom({ trackId: 'coast', laps: 1 });
+  await g1.joinRoom(code);
+  await until(() => host.room.players.length === 2 && g1.room?.players.length === 2);
+  for (const p of g1.room.players) assert.ok(!/^P\d$/.test(p.name), `typed name leaked: ${p.name}`);
+  const heard = [];
+  for (const p of [host, g1]) p.on('chat', (m) => heard.push(m));
+  g1.session.chat('hello');
+  host.session.chat('hi');
+  g1.session._sendHost({ k: 'chat', text: 'sneaky' });
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(heard.length, 0);
+  host.leave?.(); g1.leave?.();
 });
