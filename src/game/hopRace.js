@@ -49,9 +49,19 @@ export class HopRace extends Race {
   build() {
     super.build();
     const g = this.game, w = this.world;
-    this.g = w.gravity || 9.81;
+    // low-gravity worlds still float, but hops stay hops (real moon gravity gives 12 s hangs)
+    this.g = Math.max(w.gravity || 9.81, 5.5);
     this.jetUp = this.g + Math.max(1.25 * this.g, 6); // net climb ~12 m/s² on Earth, floatier on the Moon
     this.groundAt = typeof w.getGroundHeight === 'function' ? (x, z) => w.getGroundHeight(x, z) : null;
+    // The sampler's heights come from the ground, which drops away over gaps. Use the road
+    // deck instead, so "fell below the road" and altitude work across a gap too.
+    if (typeof w.getTrackInfo === 'function') {
+      const tr = this.track, ti = {};
+      for (let i = 0; i < tr.n; i++) {
+        w.getTrackInfo(tr.px[i], tr.pz[i], -1, ti);
+        if (Number.isFinite(ti.height)) tr.py[i] = ti.height;
+      }
+    }
     for (const c of this.cars) {
       c.jet = { fuel: 1, vy: 0, air: false, firing: false, airT: 0, flight: 0 };
       c.ringI = 0; c.prevD = c.info.dist;
@@ -71,7 +81,7 @@ export class HopRace extends Race {
     let rings = [];
     if (Array.isArray(w.hopRings) && w.hopRings.length) {
       for (const r of w.hopRings) {
-        const info = tr.locate(r.position.x, r.position.z, -1, {});
+        const info = tr.locate(r.position.x, r.position.z, r.u != null ? Math.round(r.u * tr.n) % tr.n : -1, {});
         rings.push({ dist: info.dist, lat: info.lat, position: r.position.clone(), tx: info.tx, tz: info.tz, radius: r.radius || 5 });
       }
     } else {
@@ -316,6 +326,27 @@ export class HopRace extends Race {
     }
     const pred = v.y + J.vy * t - 0.5 * this.g * t * t;
     return pred < want && J.fuel > 0;
+  }
+
+  /** Is the road missing at track distance d (a gap you have to jet over)? */
+  gapAt(d) {
+    const w = this.world;
+    if (typeof w.getTrackInfo !== 'function') return false;
+    const p = this.track.pointAt(d, 0, this._gp || (this._gp = {}));
+    return !!w.getTrackInfo(p.x, p.z, -1, this._gi || (this._gi = {})).gap;
+  }
+
+  /** Back on the road, far enough before any gap to get a run-up. */
+  resetCar(c) {
+    let d = c.info.dist;
+    for (let back = 0; back < 600; back += 5) {
+      let clear = true;
+      for (let a = -10; a <= 70 && clear; a += 5) if (this.gapAt(d - back + a)) clear = false;
+      if (clear) { d -= back; break; }
+    }
+    const p = this.track.pointAt(d, 0);
+    c.v.place(p.x, p.y, p.z, p.yaw);
+    this.track.locate(p.x, p.z, -1, c.info);
   }
 
   respawn(c, msg) {

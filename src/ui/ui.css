@@ -425,7 +425,9 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 4px 7px; border-radius:
 .h-arrow { position: absolute; left: 50%; top: 50%; width: 0; height: 0; opacity: 0; transition: opacity .25s; }
 .h-arrow.on { opacity: 1; }
 .h-arrow i { position: absolute; left: -22px; top: -16px; width: 44px; height: 32px; background: var(--gold); clip-path: polygon(100% 50%, 0 0, 22% 50%, 0 100%); filter: drop-shadow(0 0 10px rgba(255,201,77,.8)); animation: ui-pulse 1s ease-in-out infinite; }
-.ui-root.is-touch .h-alt { right: calc(16px + var(--safe-r)); bottom: auto; top: calc(96px + var(--safe-t)); }
+/* phones: keep altitude clear of the JET/boost buttons, under the ring counter */
+.ui-root.is-touch .h-alt { right: auto; left: 50%; transform: translateX(-50%); bottom: auto; top: calc(112px + var(--safe-t)); padding: 4px 10px; }
+.ui-root.is-touch .h-alt b { font-size: 18px; }
 /* Keep the ring counter clear of the pause button on phones. */
 .ui-root.is-touch .h-rings { top: calc(68px + var(--safe-t)); padding: 4px 12px; }
 .ui-root.is-touch .h-rings b { font-size: 20px; }

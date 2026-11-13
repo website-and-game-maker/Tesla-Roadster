@@ -74,10 +74,16 @@ mp.sendState({ pos, quat, vel, speed, steer, lap, progress })  // progress 0..1 
 mp.getRemoteCars(); events 'lobby','countdown','positions','results'
 ```
 
-## Flight (the main game)
+## Fly mode (the main game): jet hops
 
-- `src/physics/flight.js`: `Flyer` (player flight model: thrust, lift, drag, bank-to-turn, VTOL hover, crash rules) and `AIFlyer` (kinematic pilots that follow the course with speed planning). With assist on, the stick sets the bank angle and letting go levels the wings.
-- `src/game/flightCourse.js`: samples a world's `flightCurve` (or lifts a ground track into the sky) and handles ring crossing.
-- `src/game/flightRace.js`: ring races, ring trials, free flight and the tutorial. Same shape as `Race` (`build`, `update`, `hudData`, `endRace`, `dispose`). With assist on, `ringAssist` gently pulls a lined-up flight path through the ring centre.
-- Online: `FlightRace.onlineSpawn(slot)` places the car on the grid; `FlightRace.onlineState()` is what gets streamed. Rooms carry `settings.vehicleMode` ('flight' by default).
-- `src/game/accounts.js`: UI `auth` events to Supabase auth and cloud saves; keeps whichever save has more progress on sign-in. Without keys in `src/multiplayer/config.js` the game stays local-only.
+The Roadster drives on the road and fires short thruster bursts to hop over traffic, gaps and up through sky rings.
+
+- `src/game/hopRace.js`: `HopRace extends Race`, so driving, AI, laps, online and the HUD all come from the ground race. On top it adds:
+  - a jet tank per car (`c.jet`): a full tank burns in 1.4 s and refills in 2.6 s on the road; every ring adds 45%.
+  - vertical motion (`jetStep`): thrust, gravity (at least 5.5 m/s², so low-gravity worlds still hop rather than hang), a shallow glide when coming down at speed, hard landings above 22 m/s.
+  - walls only count within 2.2 m of the road, so you can hop over them; falling 12 m below the road respawns you before the next gap.
+  - rings from `world.hopRings` (gap worlds) or generated about every 300 m over straight stretches, 4.5 to 10 m up.
+  - AI: `aiAimLane` lines the car up under the next ring, `aiJet` times the burn so the arc passes through it.
+  - kinds: `ringrace` (vs AI), `ringtrial` (missed ring +2 s), `freeflight`, `tutorial` (drive, jet, ring, glide, boost, lap).
+- Input: the handbrake input is the jet in this mode (Space, touch JET button, gamepad A).
+- Worlds pick their road layout with `createWorld(id, { mode: 'hop' })`; gap worlds (Spires, Red Rock Run, Cloud Isles) are hop-only.

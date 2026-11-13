@@ -2,7 +2,7 @@
 
 A 3D game about a flying electric roadster. It runs in the browser on desktop and mobile and is hosted on GitHub Pages. It uses plain ES modules and three.js, with no build step.
 
-- **Fly (the main game):** ring races against AI pilots, ring trials, free flight, a flight career across 10 sky worlds, and a tutorial.
+- **Fly (the main game):** drive, then fire short jet bursts to hop over traffic, gaps and through sky rings. Ring races against AI, ring trials, free roam, a career across 10 worlds, and a tutorial.
 - **Drive:** the original ground racing (races, time attack, drift, elimination). Switch with the Flight/Ground toggle at the top of the menu.
 - **Online:** private rooms and quick match. Optional free accounts sync your save (see `supabase/` and `src/multiplayer/config.js`).
 
