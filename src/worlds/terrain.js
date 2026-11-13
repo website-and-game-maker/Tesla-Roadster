@@ -6,7 +6,7 @@ import { smoothstep } from './noise.js';
 // Returns a function (x, z) -> ground height that blends the world's natural
 // terrain into the track corridor.
 export function makeHeightFn(def, track, noise) {
-  if (def.noRoad) {
+  if (def.noRoad || def.elevated) {
     // Sky worlds: no road to flatten. Terrain may still be shaped around the
     // flight path (e.g. a canyon carved along it).
     const tmp = {};

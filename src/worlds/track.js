@@ -35,6 +35,37 @@ export function buildTrackData(def) {
     const rl = Math.hypot(t.x, t.z) || 1;
     right[i * 3] = -t.z / rl; right[i * 3 + 1] = 0; right[i * 3 + 2] = t.x / rl;
   }
+  // Gaps (open air to jump) and ramps (kickers) for hop races.
+  // { at: 0..1 along the lap (gap centre / ramp lip), length: m, height: m }
+  const gap = new Uint8Array(count);
+  const length0 = length;
+  for (const gp of def.gaps || []) {
+    const c = gp.at * length0;
+    for (let i = 0; i < count; i++) {
+      let d = i * spacing - c;
+      if (d > length0 / 2) d -= length0;
+      if (d < -length0 / 2) d += length0;
+      if (Math.abs(d) <= gp.length / 2) gap[i] = 1;
+    }
+  }
+  // A gap can carry its own take-off ramp, ending right at the gap's edge.
+  const ramps = [...(def.ramps || [])];
+  for (const gp of def.gaps || []) {
+    if (gp.ramp) ramps.push({ at: gp.at - (gp.length / 2 + spacing) / length0, ...gp.ramp });
+  }
+  for (const rp of ramps) {
+    // The lip is at `at`, or right at the start of the gap the ramp leads into.
+    const lip = rp.at * length0;
+    for (let i = 0; i < count; i++) {
+      let d = lip - i * spacing;
+      if (d > length0 / 2) d -= length0;
+      if (d < -length0 / 2) d += length0;
+      if (d >= 0 && d <= rp.length) {
+        const k = 1 - d / rp.length;
+        pos[i * 3 + 1] += rp.height * k * k * (3 - 2 * k);
+      }
+    }
+  }
   // Signed curvature (1/radius), positive when the road bends right.
   for (let i = 0; i < count; i++) {
     const a = (i - 2 + count) % count;
@@ -69,6 +100,7 @@ export function buildTrackData(def) {
     curve, length, count, spacing, pos, fwd, right, curvature,
     roadHalfWidth, wallHalfWidth, box,
     kerbs: new Uint8Array(count),
+    gap,
   };
 
   // Kerbs where the corner is tight enough to matter.
@@ -162,6 +194,7 @@ export function buildTrackData(def) {
     out.right = [rx / rl, 0, rz / rl];
     out.curvature = curvature[i];
     out.kerb = data.kerbs[i] === 1;
+    out.gap = gap[i] === 1;
     return out;
   };
 
@@ -181,7 +214,7 @@ function segParam(pos, a, b, x, z) {
 // profile: array of [lateralOffset, heightOffset] across the ribbon, from the
 // centre outward on the right side (mirrored on the left when side = -1).
 // heightFn(i, lateral) can override the height (used for terrain skirts).
-function ribbon(data, profile, side, { vScale = 1, uMode = 'profile', heightFn, closed = true } = {}) {
+function ribbon(data, profile, side, { vScale = 1, uMode = 'profile', heightFn, closed = true, keepGaps = false } = {}) {
   const { count, pos, right, spacing } = data;
   const n = profile.length;
   const rows = count + 1;
@@ -207,6 +240,8 @@ function ribbon(data, profile, side, { vScale = 1, uMode = 'profile', heightFn, 
   }
   const index = [];
   for (let r = 0; r < rows - 1; r++) {
+    // Nothing is built across a gap.
+    if (!keepGaps && data.gap && (data.gap[r % count] || data.gap[(r + 1) % count])) continue;
     for (let k = 0; k < n - 1; k++) {
       const a = r * n + k;
       const b = a + 1;
@@ -289,32 +324,37 @@ export function buildTrackMeshes(data, def, world, quality) {
   road.name = 'road';
   group.add(road);
 
-  // Shoulder (road edge -> wall) and an embankment skirt down/up to terrain.
-  const shoulderColor = new THREE.Color(def.shoulderColor ?? 0x6d6a5f);
-  const shoulderMat = new THREE.MeshStandardMaterial({
-    color: shoulderColor,
-    map: world.detailMap,
-    roughness: 1,
-  });
-  const skirt = def.skirtWidth ?? 14;
-  const shoulderProfile = [[rhw, -0.02], [whw + 1.0, -0.02], [whw + 1 + skirt * 0.35, 0], [whw + 1 + skirt, 0]];
-  const skirtHeight = (i, lat, x, z, yRoad, k) => {
-    if (k < 2) return yRoad;
-    const terrainY = world.terrainHeight(x, z);
-    return k === 2 ? yRoad + (terrainY - yRoad) * 0.35 : terrainY;
-  };
-  const shoulderGeo = merge([
-    ribbon(data, shoulderProfile, 1, { vScale: 6, uMode: 'lat', heightFn: skirtHeight }),
-    ribbon(data, shoulderProfile, -1, { vScale: 6, uMode: 'lat', heightFn: skirtHeight }),
-  ]);
-  // World-space UVs keep the detail texture scale consistent.
-  const sp = shoulderGeo.attributes.position;
-  const suv = shoulderGeo.attributes.uv;
-  for (let k = 0; k < sp.count; k++) suv.setXY(k, sp.getX(k) / 6, sp.getZ(k) / 6);
-  const shoulder = new THREE.Mesh(shoulderGeo, shoulderMat);
-  shoulder.receiveShadow = true;
-  shoulder.name = 'shoulder';
-  group.add(shoulder);
+  if (def.elevated) {
+    group.add(buildDeck(data, def, world, quality));
+  } else {
+    // Shoulder (road edge -> wall) and an embankment skirt down/up to terrain.
+    const shoulderColor = new THREE.Color(def.shoulderColor ?? 0x6d6a5f);
+    const shoulderMat = new THREE.MeshStandardMaterial({
+      color: shoulderColor,
+      map: world.detailMap,
+      roughness: 1,
+    });
+    const skirt = def.skirtWidth ?? 14;
+    const shoulderProfile = [[rhw, -0.02], [whw + 1.0, -0.02], [whw + 1 + skirt * 0.35, 0], [whw + 1 + skirt, 0]];
+    const skirtHeight = (i, lat, x, z, yRoad, k) => {
+      if (k < 2) return yRoad;
+      const terrainY = world.terrainHeight(x, z);
+      return k === 2 ? yRoad + (terrainY - yRoad) * 0.35 : terrainY;
+    };
+    const shoulderGeo = merge([
+      ribbon(data, shoulderProfile, 1, { vScale: 6, uMode: 'lat', heightFn: skirtHeight }),
+      ribbon(data, shoulderProfile, -1, { vScale: 6, uMode: 'lat', heightFn: skirtHeight }),
+    ]);
+    // World-space UVs keep the detail texture scale consistent.
+    const sp = shoulderGeo.attributes.position;
+    const suv = shoulderGeo.attributes.uv;
+    for (let k = 0; k < sp.count; k++) suv.setXY(k, sp.getX(k) / 6, sp.getZ(k) / 6);
+    const shoulder = new THREE.Mesh(shoulderGeo, shoulderMat);
+    shoulder.receiveShadow = true;
+    shoulder.name = 'shoulder';
+    group.add(shoulder);
+
+}
 
   // Kerbs: raised red/white strips on corners.
   if (def.kerbs !== false) {
@@ -370,6 +410,7 @@ export function buildTrackMeshes(data, def, world, quality) {
     const off = bdef.posts ? whw + 0.1 : whw + 1.5;
     const yOff = bdef.posts ? 0.45 : 1.4;
     for (let i = 0; i < data.count; i += step) {
+      if (data.gap[i]) continue;
       for (const side of [-1, 1]) {
         const x = data.pos[i * 3] + data.right[i * 3] * off * side;
         const z = data.pos[i * 3 + 2] + data.right[i * 3 + 2] * off * side;
@@ -386,6 +427,54 @@ export function buildTrackMeshes(data, def, world, quality) {
   // Start / finish: chequered line and a gantry.
   group.add(buildStartLine(data, def, quality));
   return group;
+}
+
+// Elevated roads (skyways, viaducts, bridges between islands): a concrete
+// deck under the road and pillars down to the ground. Gaps stay open.
+function buildDeck(data, def, world, quality) {
+  const g = new THREE.Group();
+  g.name = 'deck';
+  const W = data.wallHalfWidth + 0.7;
+  const depth = def.deckDepth ?? 1.6;
+  const mat = new THREE.MeshStandardMaterial({ color: def.deckColor ?? 0x9b9a96, roughness: 0.9, map: world.detailMap, side: THREE.DoubleSide });
+  const deckGeo = merge([
+    ribbon(data, [[-W, -depth], [-W, -0.02], [W, -0.02], [W, -depth], [-W, -depth]], 1, { vScale: 6 }),
+  ]);
+  const deck = new THREE.Mesh(deckGeo, mat);
+  deck.receiveShadow = true;
+  deck.castShadow = quality.shadows;
+  g.add(deck);
+  if (def.pillars !== false) {
+    const every = Math.max(1, Math.round((def.pillarSpacing ?? 40) / data.spacing));
+    const spots = [];
+    for (let i = 0; i < data.count; i += every) {
+      // Pillars stand clear of gaps so the deck ends look supported.
+      let near = false;
+      for (let k = -3; k <= 3; k++) if (data.gap[(i + k + data.count) % data.count]) near = true;
+      if (near) continue;
+      const x = data.pos[i * 3];
+      const z = data.pos[i * 3 + 2];
+      const top = data.pos[i * 3 + 1] - depth;
+      const bottom = world.terrainHeight(x, z) - 2;
+      if (top - bottom < 3) continue;
+      spots.push([x, top, z, bottom]);
+    }
+    const geo = new THREE.CylinderGeometry(1, 1, 1, 10);
+    geo.translate(0, -0.5, 0);
+    const inst = new THREE.InstancedMesh(geo, mat, Math.max(1, spots.length));
+    const m = new THREE.Matrix4();
+    const r = Math.min(3, data.roadHalfWidth * 0.3);
+    spots.forEach(([x, top, z, bottom], k) => {
+      m.makeScale(r, top - bottom, r).setPosition(x, top, z);
+      inst.setMatrixAt(k, m);
+    });
+    inst.count = spots.length;
+    inst.castShadow = quality.shadows;
+    inst.receiveShadow = true;
+    inst.computeBoundingSphere();
+    g.add(inst);
+  }
+  return g;
 }
 
 function kerbRuns(data) {
