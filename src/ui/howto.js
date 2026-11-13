@@ -34,34 +34,34 @@ export const CONTROLS = {
   ],
 };
 
-/** Flying controls (the main game). */
+/** Fly mode (the main game): road racing with short jet hops. Same driving controls, plus JET. */
 export const FLIGHT_CONTROLS = {
   touch: [
-    { key: 'THRUST', what: 'Thrust', how: 'Slide the lever on the right up; it stays where you leave it' },
-    { key: 'Stick', what: 'Bank and climb', how: 'Left stick: sideways banks the car into a turn, pull down to climb, push up to dive', tiltAlt: 'Or tilt your device to bank' },
-    { key: '⚡', what: 'Overdrive boost', how: 'Hold it. Flying through rings recharges it' },
-    { key: 'BRAKE', what: 'Air-brake and hover', how: 'Hold it: the fans keep you up even when slow' },
+    { key: 'GO', what: 'Drive', how: 'Hold the big button on the right' },
+    { key: 'BRAKE', what: 'Brake, then reverse', how: 'Hold it next to GO' },
+    { key: '◀ ▶', what: 'Steer', how: 'Drag left or right anywhere on the left side', tiltAlt: 'Or tilt your device like a steering wheel' },
+    { key: 'JET', what: 'Fire the jets', how: 'Hold for a short hop. The tank refills on the ground' },
+    { key: '⚡', what: 'Boost', how: 'Tap when it glows' },
     { key: '❚❚', what: 'Pause', how: 'Top middle of the screen' },
   ],
   keyboard: [
-    { key: 'W  or  S', what: 'More or less thrust' },
-    { key: 'A D  or  ← →', what: 'Bank into a turn' },
-    { key: '↑  or  I', what: 'Climb' },
-    { key: '↓  or  K', what: 'Dive' },
-    { key: 'Q  or  E', what: 'Rudder (flat turn)' },
-    { key: 'Shift', what: 'Overdrive boost' },
-    { key: 'Space', what: 'Air-brake and hover' },
+    { key: 'W  or  ↑', what: 'Drive' },
+    { key: 'S  or  ↓', what: 'Brake, then reverse' },
+    { key: 'A D  or  ← →', what: 'Steer' },
+    { key: 'Space', what: 'Fire the jets (short hops)' },
+    { key: 'Shift', what: 'Boost' },
     { key: 'C', what: 'Change camera' },
-    { key: 'R', what: 'Reset to the last ring' },
+    { key: 'R', what: 'Put the car back on the road' },
     { key: 'Esc  or  P', what: 'Pause' },
   ],
   gamepad: [
-    { key: 'RT  or  LT', what: 'More or less thrust' },
-    { key: 'Left stick', what: 'Bank and climb' },
-    { key: 'X  or  RB', what: 'Overdrive boost' },
-    { key: 'A', what: 'Air-brake and hover' },
+    { key: 'RT', what: 'Drive' },
+    { key: 'LT', what: 'Brake, then reverse' },
+    { key: 'Left stick', what: 'Steer' },
+    { key: 'A', what: 'Fire the jets (short hops)' },
+    { key: 'X  or  RB', what: 'Boost' },
     { key: 'Y', what: 'Change camera' },
-    { key: 'Back', what: 'Reset to the last ring' },
+    { key: 'Back', what: 'Put the car back on the road' },
     { key: 'Start', what: 'Pause' },
   ],
 };
@@ -69,10 +69,10 @@ export const controlsFor = (device, vehicle) => (vehicle === 'ground' ? CONTROLS
 
 /** One short line for the start of a race. */
 export const QUICK_HINT = {
-  flight_touch: 'Drive with GO and steer. Hold JET to hop through the rings.',
-  flight_touchTilt: 'Tilt to steer, hold GO. Hold JET to hop through the rings.',
-  flight_keyboard: 'W to drive, A D to steer. Hold SPACE to fire the jets through the rings.',
-  flight_gamepad: 'RT to drive, left stick to steer. Hold A to fire the jets through the rings.',
+  flight_touch: 'Hold GO to drive. Hold JET to hop over traffic and through the rings.',
+  flight_touchTilt: 'Hold GO, tilt to steer. Hold JET to hop through the rings.',
+  flight_keyboard: 'W to drive, A D to steer. Space fires the jets for short hops through the rings.',
+  flight_gamepad: 'RT to drive. Hold A to fire the jets and hop through the rings.',
   touch: 'Hold GO to drive. Drag on the left side to steer.',
   touchTilt: 'Hold GO to drive. Tilt your device to steer.',
   keyboard: 'W or ↑ to drive. A D or ← → to steer. Space to drift.',
@@ -105,7 +105,7 @@ export function howToHTML(device, { tiltAvailable = false, tiltOn = false, vehic
       <div class="ht-tilt-text">
         <span class="ht-badge">${tiltOn ? 'On' : 'Try this'}</span>
         <h3>${vehicle === 'ground' ? 'Tilt to steer' : 'Tilt to bank'}</h3>
-        <p>${vehicle === 'ground' ? 'Hold your device sideways with both hands and tilt it left or right, just like a steering wheel. Your thumbs stay free for GO and BRAKE.' : 'Hold your device sideways and tilt it left or right to bank. Your thumbs stay free for thrust and climbing.'}</p>
+        <p>${vehicle === 'ground' ? 'Hold your device sideways with both hands and tilt it left or right, just like a steering wheel. Your thumbs stay free for GO and BRAKE.' : 'Hold your device sideways with both hands and tilt it left or right to steer. Your thumbs stay free for GO and JET.'}</p>
       </div>
       <button class="${tiltOn ? 'ui-secondary sel' : 'ui-primary'} ht-tilt-btn" data-howto="tilt" role="switch" aria-checked="${tiltOn}">${tiltOn ? 'Tilt is on ✓' : 'Turn on tilt'}</button>
     </div>` : '';

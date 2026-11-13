@@ -233,13 +233,13 @@ export function createUI(opts = {}) {
     ${topbar()}
     <div class="ui-head">${backBtn()}<h2>Play</h2></div>
     <div class="p-vehicle" role="radiogroup" aria-label="Fly or drive">
-      <button class="p-veh" data-vmode="flight" role="radio"><i>${ICON.fly}</i><span><b>Fly</b><small>Race through rings in the sky</small></span></button>
+      <button class="p-veh" data-vmode="flight" role="radio"><i>${ICON.fly}</i><span><b>Fly</b><small>Drive, then jet over traffic and through sky rings</small></span></button>
       <button class="p-veh" data-vmode="ground" role="radio"><i>${ICON.drive}</i><span><b>Drive</b><small>Race on the road</small></span></button>
     </div>
     <div class="p-modes"></div>
   </section>`));
   const MODE_TEXT = {
-    flight: { career: 'Fly sky courses, earn stars and credits, unlock new worlds.', quick: 'One race through the rings against AI pilots.', timetrial: 'Fly the course alone and beat your best time.', multiplayer: 'Race friends online. Share a room code to play together.' },
+    flight: { career: 'Race and jet-hop through sky rings, earn stars and credits, unlock new worlds.', quick: 'One race against AI drivers. Jet over traffic and through the rings.', timetrial: 'Drive and hop the course alone and beat your best time.', multiplayer: 'Race friends online. Share a room code to play together.' },
     ground: { career: 'Win road events, earn stars and credits, unlock new tracks.', quick: 'One race on the road against AI drivers.', timetrial: 'Drive alone and beat your best lap.', multiplayer: 'Race friends online. Share a room code to play together.' },
   };
   const MODE_NAME = { multiplayer: 'Online' };
@@ -524,7 +524,6 @@ export function createUI(opts = {}) {
     { tab: 'graphics', key: 'showFps', label: 'Show FPS', type: 'toggle' },
     { tab: 'controls', key: 'controls', label: 'Controls', type: 'seg', options: [['auto', 'Auto'], ['keyboard', 'Keyboard'], ['gamepad', 'Controller'], ['touch', 'Touch']] },
     { tab: 'controls', key: 'steerSensitivity', label: 'Steering sensitivity', type: 'range', min: 0.5, max: 1.5, step: 0.05, fmt: (v) => Math.round(v * 100) + '%' },
-    { tab: 'controls', key: 'invertPitch', label: 'Invert pitch (flight)', type: 'toggle' },
     { tab: 'controls', key: 'tiltSteer', label: 'Tilt to steer', type: 'toggle', when: () => device() === 'touch' && canTilt() },
     { tab: 'controls', key: 'haptics', label: 'Vibration', type: 'toggle', when: () => device() === 'touch' },
     { tab: 'audio', key: 'masterVol', label: 'Master volume', type: 'range', min: 0, max: 1, step: 0.05, fmt: (v) => Math.round(v * 100) + '%' },
@@ -617,7 +616,7 @@ export function createUI(opts = {}) {
   function renderHowTo() {
     const d = device();
     const vm = inRace ? raceVehicle : (settings.vehicleMode || 'flight');
-    howEl.querySelector('#hp-title').textContent = vm === 'flight' ? 'Flying controls' : 'Driving controls';
+    howEl.querySelector('#hp-title').textContent = vm === 'flight' ? 'Fly mode controls' : 'Driving controls';
     howEl.querySelector('.ht-body').innerHTML = howToHTML(d, { tiltAvailable: canTilt(), tiltOn: !!settings.tiltSteer && touchCtl.tiltActive, vehicle: vm });
     // Replaying the tutorial mid-race would throw the race away, so only offer it from the menus.
     howEl.querySelector('.hp-actions').hidden = inRace;
@@ -635,9 +634,9 @@ export function createUI(opts = {}) {
   const welcomeEl = mount('welcome', h(`<section class="s-welcome">
     <div class="w-card">
       <div class="w-kicker">WELCOME</div>
-      <h2>Your Roadster can fly.</h2>
-      <p>Take a one-minute first flight to learn thrust, climbing and rings. You can replay it any time from the <b>?</b> button.</p>
-      <button class="ui-primary w-go" data-welcome="go" data-autofocus>Start first flight <span>›</span></button>
+      <h2>Your Roadster has jets.</h2>
+      <p>Drive, then fire the jets for short hops over the traffic and through the sky rings. The tank refills on the ground. A one-minute first run shows you how, and you can replay it any time from the <b>?</b> button.</p>
+      <button class="ui-primary w-go" data-welcome="go" data-autofocus>Start first run <span>›</span></button>
       <button class="w-skip" data-welcome="skip">Skip, I already know how to play</button>
     </div>
   </section>`));
