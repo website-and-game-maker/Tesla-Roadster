@@ -59,8 +59,7 @@ export class OnlineRace {
       tagHeight: 1.7,
       createCarMesh: (color, carId) => {
         const { paint, wheels } = decodeCarId(carId);
-        const model = this.createRoadster({ paint, wheels, quality: 'low' });
-        return model.object;
+        return this.createRoadster({ paint, wheels, quality: 'low' }); // model: lets RemoteCars animate it
       },
     });
   }
@@ -93,7 +92,14 @@ export class OnlineRace {
   }
 
   /** Called at the end of Race.postUpdate(), after the car meshes moved. */
-  postUpdate(race) {
+  postUpdate(race, dt = 1 / 60) {
+    // Flight (or any other mode) can hand us its own state:
+    //   race.onlineState() -> { mode: 'flight', pos, quat, vel, speed, thrust, ringIndex, lap, progress, fx }
+    if (typeof race.onlineState === 'function') {
+      this.mp.sendState(race.onlineState());
+      this._drawOthers(race, dt);
+      return;
+    }
     const c = race.player;
     const v = c.v;
     const o = c.model.object;
@@ -109,9 +115,12 @@ export class OnlineRace {
       progress: race.track.length ? c.info.dist / race.track.length : 0,
       fx,
     });
-    this.cars = this.mp.getRemoteCars();
-    this.remote?.update(this.cars, race.camera);
+    this._drawOthers(race, dt);
+  }
 
+  _drawOthers(race, dt) {
+    this.cars = this.mp.getRemoteCars();
+    this.remote?.update(this.cars, race.camera, dt);
     if (this.results && !race.ended) race.endRace();
   }
 
