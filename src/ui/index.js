@@ -201,7 +201,7 @@ export function createUI(opts = {}) {
       <button data-go="about"><small>07</small>About</button>
     </nav>
     <div class="m-hero">
-      <div class="m-hero-name">TESLA ROADSTER</div>
+      <div class="m-hero-name">${window.__ROADSTER_NATIVE ? 'ROCKET ROADSTER' : 'TESLA ROADSTER'}</div>
       <div class="m-specs">
         <div><b>1.9</b><span>s 0–100 km/h</span></div>
         <div><b>400+</b><span>km/h top speed</span></div>
