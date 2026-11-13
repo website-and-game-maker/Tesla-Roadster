@@ -32,6 +32,15 @@ export const SONGS = {
       { prog: [[0, 'm'], [3, 'M'], [10, 'M'], [8, 'M7']], repeat: 2 },
     ],
   },
+  // Flight: soaring and anthemic. Major key, half-time drums, big open chords.
+  flight: {
+    bpm: 112, root: 50, scale: PENTA_MAJOR, barsPerChord: 1, style: 'soar', seed: 2027,
+    sections: [
+      { prog: [[5, 'add9'], [0, 'M'], [7, 'sus2'], [9, 'm7']], repeat: 2 },
+      { prog: [[0, 'add9'], [7, 'M'], [9, 'm7'], [5, 'M7']], repeat: 2 },
+      { prog: [[9, 'm7'], [5, 'add9'], [0, 'M'], [7, 'sus2']], repeat: 2 },
+    ],
+  },
   // Results / podium: brighter, major key.
   results: {
     bpm: 100, root: 41, scale: PENTA_MAJOR, barsPerChord: 1, style: 'bright', seed: 7,
@@ -51,6 +60,11 @@ const STYLE = {
     kick: [0, 4, 8, 12], snare: [4, 12], hat: [2, 6, 10, 14], openHat: [14],
     bass: [[0, 2, 0], [2, 2, 0], [4, 2, 12], [6, 2, 0], [8, 2, 0], [10, 2, 12], [12, 2, 0], [14, 2, 7]],
     arpEvery: 1, swing: 0,
+  },
+  soar: {
+    kick: [0, 10], snare: [8], hat: [0, 2, 4, 6, 8, 10, 12, 14], openHat: [6, 14],
+    bass: [[0, 6, 0], [6, 2, 12], [8, 6, 0], [14, 2, 7]],
+    arpEvery: 2, swing: 0,
   },
   bright: {
     kick: [0, 7, 8], snare: [4, 12], hat: [2, 6, 10, 14], openHat: [],
@@ -102,7 +116,7 @@ export class MusicPlayer {
     this.timer = null;
   }
 
-  /** Start a song by name ('menu' | 'race' | 'results'), crossfading. */
+  /** Start a song by name ('menu' | 'race' | 'flight' | 'results'), crossfading. */
   play(name = 'menu') {
     const song = SONGS[name];
     if (!song) return;

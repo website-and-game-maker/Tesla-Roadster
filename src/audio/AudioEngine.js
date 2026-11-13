@@ -9,6 +9,7 @@
 //   audio.setVolume('music', 0.5);
 
 import { MotorSound } from './MotorSound.js';
+import { FlightSound } from './FlightSound.js';
 import { Sfx } from './Sfx.js';
 import { MusicPlayer } from './Music.js';
 import { clamp, makeNoiseBuffer, makeImpulse, gain } from './util.js';
@@ -145,15 +146,44 @@ export class AudioEngine {
    */
   update(state, dt = 1 / 60) {
     if (!this.ready) return;
+    this._setMode('drive');
     this.motor.update(state);
     this.sfx.tickScrape(dt);
+  }
+
+  /**
+   * Per-frame update while flying. Calling it switches from road sounds to
+   * flight sounds (calling update() again switches back), with a crossfade.
+   * @param {{airspeed?:number, thrust?:number, boost?:boolean, altitude?:number, gForce?:number}} state
+   *   airspeed m/s, thrust 0..1, altitude metres, gForce in g (1 = level)
+   */
+  updateFlight(state, dt = 1 / 60) {
+    if (!this.ready) return;
+    if (!this.flight) {
+      this.flight = new FlightSound(this.ctx, this.buses.engine, this.noise, { simple: this.quality === 'low' });
+    }
+    this._setMode('flight');
+    this.flight.update(state);
+    this.sfx.tickScrape(dt);
+  }
+
+  _setMode(mode) {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    this._applyCarLevels(0.25);
+  }
+
+  _applyCarLevels(tc) {
+    const on = this.carActive;
+    this.motor.setLevel(on && this.mode !== 'flight' ? 1 : 0, tc);
+    if (this.flight) this.flight.setLevel(on && this.mode === 'flight' ? 1 : 0, tc);
   }
 
   /** Fade the player car's sounds in/out (e.g. off in menus, on in races). */
   setCarActive(on) {
     this.carActive = on;
     if (!this.ready) return;
-    this.motor.setLevel(on ? 1 : 0, 0.25);
+    this._applyCarLevels(0.25);
   }
 
   /** impulse ~ change in speed in m/s. Returns 0..1 strength (0 if ignored). */
@@ -167,11 +197,14 @@ export class AudioEngine {
   scrape(level) { if (this.ready) this.sfx.scrape(level); }
   horn(on) { if (this.ready) this.sfx.horn(on); }
 
-  /** 'click'|'hover'|'confirm'|'back'|'error'|'countdown'|'go'|'checkpoint'|'lap'|'coin'|'combo'|'unlock'|'whoosh' */
-  ui(name) {
+  /**
+   * 'click'|'hover'|'confirm'|'back'|'error'|'countdown'|'go'|'checkpoint'|'lap'|'coin'|'combo'|'unlock'|'whoosh'
+   * Flight: 'ring' (pass the combo count as arg), 'nearMiss', 'transform', 'stall'.
+   */
+  ui(name, arg) {
     if (!this.ready) return;
-    if (name === 'countdown' || name === 'go') this.duckMusic(0.5, 0.5);
-    this.sfx.ui(name);
+    if (name === 'countdown' || name === 'go' || name === 'transform') this.duckMusic(0.5, 0.5);
+    this.sfx.ui(name, arg);
   }
 
   duckMusic(amount = 0.5, seconds = 0.8) {

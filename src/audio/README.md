@@ -24,7 +24,13 @@ audio.ui('click');           // hover click confirm back error countdown go
                              // checkpoint lap coin combo unlock whoosh
 audio.setCarActive(false);   // fade car sounds out in menus
 
-audio.music.play('menu');    // 'menu' | 'race' | 'results', crossfades
+// flight mode: call instead of update() each frame while flying (crossfades back on update())
+audio.updateFlight({ airspeed, thrust, boost, altitude, gForce }, dt);
+//   airspeed m/s, thrust 0..1, boost = afterburner, altitude metres, gForce in g
+audio.ui('ring', combo);     // chime climbs a scale as the combo grows
+audio.ui('nearMiss'); audio.ui('transform'); audio.ui('stall');
+
+audio.music.play('menu');    // 'menu' | 'race' | 'flight' | 'results', crossfades
 audio.music.setIntensity(x); // 0 calm .. 1 full; layers fade in as it rises
 audio.music.stop();
 
@@ -47,7 +53,8 @@ Every call is a safe no-op before `unlock()` or on browsers without Web Audio. M
 ## What's inside
 
 - `MotorSound.js`: electric motor whine built from stacked tones at multiples of motor speed (pitch tracks road speed, since the car has one gear), inverter hum, regen-braking tone, tire roll and gravel crunch per surface, tire squeal and skid noise, wind that grows with the square of speed, boost thruster roar, and the low-speed pedestrian warning hum real EVs make.
-- `Sfx.js`: layered crash sounds (thump, crunch, crackle, metal ring and glass for big hits), wall scrape, horn, and all UI sounds.
-- `Music.js`: a step sequencer scheduled on the audio clock. Three original songs (garage menu, race, results), each with pad, bass, drums, arpeggio and lead layers. Lead melodies are generated from a fixed seed in an A A' B A shape, so they repeat like a real tune.
+- `FlightSound.js`: ducted-fan thrusters (noise body, blade-pass whirr and turbine whine that spool with thrust), afterburner roar and crackle, wind rush that grows with airspeed, a thin whistle at altitude, and airframe groan under high g.
+- `Sfx.js`: layered crash sounds (thump, crunch, crackle, metal ring and glass for big hits), wall scrape, horn, all UI sounds, and flight events (ring chime ladder, near-miss doppler whoosh, road-to-flight transform, stall warning).
+- `Music.js`: a step sequencer scheduled on the audio clock. Four original songs (garage menu, race, flight, results), each with pad, bass, drums, arpeggio and lead layers. Lead melodies are generated from a fixed seed in an A A' B A shape, so they repeat like a real tune.
 - `AudioEngine.js`: mixer buses, limiter, music ducking on crashes and countdowns, saved volume settings, tab-hide pause, 3D remote cars.
 - `settingsUI.js`: the volume settings panel.
