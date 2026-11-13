@@ -52,8 +52,21 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
   const disc = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.5, 0.08, 96),
     new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 0.25, metalness: 0.8 }));
   disc.position.y = 0.04; disc.receiveShadow = true; table.add(disc);
+  // Fly mode: the car lifts off the turntable and hovers over a soft thrust glow.
+  let hover = false, lift = 0;
+  const glowTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(120,200,255,1)'); gr.addColorStop(0.4, 'rgba(62,166,255,.45)'); gr.addColorStop(1, 'rgba(62,166,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })();
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 3.2),
+    new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+  glow.rotation.x = -Math.PI / 2; glow.position.y = 0.1;
   const ring = new THREE.Mesh(new THREE.TorusGeometry(3.45, 0.02, 8, 128),
     new THREE.MeshBasicMaterial({ color: 0x3ea6ff }));
+  table.add(glow);
   ring.rotation.x = Math.PI / 2; ring.position.y = 0.085; table.add(ring);
 
   const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
@@ -177,12 +190,21 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
     camDist += (tgtDist - camDist) * Math.min(1, dt * 8);
     lookTarget.set(...shot.look);
     // Center the car on narrow screens since menu panels stack below.
-    if (camera.aspect < 1) lookTarget.x = 0;
+    // Portrait phones: centre the car and aim below it so it sits in the top half, above the menu.
+    if (camera.aspect < 1) { lookTarget.x = 0; lookTarget.y -= 0.55; }
     look.lerp(lookTarget, Math.min(1, dt * 3));
-    const horiz = Math.cos(camPitch) * camDist;
-    camera.position.set(look.x + Math.sin(camYaw) * horiz, look.y + Math.sin(camPitch) * camDist, look.z + Math.cos(camYaw) * horiz);
+    // Narrow portrait screens see less width, so pull back to keep the whole car in view.
+    const d = camDist * (camera.aspect < 1 ? 1.45 : 1);
+    const horiz = Math.cos(camPitch) * d;
+    camera.position.set(look.x + Math.sin(camYaw) * horiz, look.y + Math.sin(camPitch) * d, look.z + Math.cos(camYaw) * horiz);
     camera.lookAt(look);
     ring.material.color.setHSL(0.58, 1, 0.55 + Math.sin(now / 600) * 0.08);
+    lift += ((hover ? 1 : 0) - lift) * Math.min(1, dt * 2.2);
+    if (car) {
+      car.position.y = 0.08 + lift * (0.85 + Math.sin(now / 700) * 0.07);
+      car.rotation.z = lift * Math.sin(now / 1300) * 0.025;
+    }
+    glow.material.opacity = lift * (0.75 + Math.sin(now / 180) * 0.08);
     if (handle?.update) handle.update(dt, 0, 0); else car?.userData?.update?.(dt);
     renderer.render(scene, camera);
   }
@@ -193,6 +215,8 @@ export function createShowroom(THREE, canvas, { buildCarModel, paints = DEFAULT_
   return {
     scene, camera, renderer,
     get car() { return car; },
+    /** true = fly mode (car hovers), false = drive mode (car sits on the turntable). */
+    setHover(v) { hover = !!v; },
     setShot(name) {
       const next = shots[name] || shots.menu;
       if (next === shot) return;

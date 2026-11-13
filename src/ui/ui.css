@@ -369,8 +369,6 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 4px 7px; border-radius:
 
 /* ---------- vehicle mode toggle + profile chip ---------- */
 .ui-topbar { gap: 12px; }
-.ui-vmode { background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 999px; padding: 4px; }
-.ui-vmode button { border-radius: 999px; padding: 8px 18px; font-weight: 700; letter-spacing: .02em; }
 .ui-profile { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
 .ui-profile i { font-style: normal; font-size: 9px; color: var(--muted); }
 .ui-profile.in i { color: #4ade80; }
@@ -455,7 +453,6 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 4px 7px; border-radius:
 .f-brake.on { background: rgba(255,77,109,.45); }
 
 @media (max-width: 760px), (max-height: 520px) {
-  .ui-vmode button { padding: 6px 10px; font-size: 13px; }
   .ui-wallet .ui-stars { display: none; }
   .h-alt { right: calc(200px + var(--safe-r)); }
   .tut-text { font-size: 15px; }
@@ -528,3 +525,108 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 4px 7px; border-radius:
 .t-steer.tilting .t-steer-track { border-color: rgba(62,166,255,.6); }
 .t-steer.tilting .t-hint { color: var(--accent); opacity: 1; }
 .mp-safe { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+
+/* =====================================================================
+   User-first redesign: short main menu, Fly/Drive picker, help "?",
+   welcome card. These rules intentionally come last and override above.
+   ===================================================================== */
+
+/* Top bar: credits, profile, help */
+.ui-wallet { align-items: center; }
+.ui-credits { font-weight: 600; }
+.ui-help { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 17px;
+  background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); transition: background .2s, border-color .2s; }
+.ui-help:hover, .ui-help:focus-visible { background: rgba(62,166,255,.2); border-color: var(--accent); }
+
+/* Main menu: three clear rows with an icon, a name and what it is for */
+.s-main .m-nav { gap: 10px; width: min(360px, 100%); }
+.m-nav .m-item { display: flex; align-items: center; gap: 16px; width: 100%; padding: 14px 18px; border-radius: 16px; text-align: left;
+  font-size: 15px; font-weight: 500; letter-spacing: 0; color: var(--text);
+  background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  transition: transform .2s var(--ease), background .2s, border-color .2s; }
+.m-nav .m-item::after { content: none; }
+.m-nav .m-item:hover, .m-nav .m-item:focus-visible { transform: translateX(4px); background: rgba(28,32,44,.85); border-color: rgba(62,166,255,.6); }
+.m-item > i { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: rgba(255,255,255,.07); color: var(--accent); }
+.m-item > i svg { width: 22px; height: 22px; }
+.m-item > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.m-item b { font-size: 20px; font-weight: 750; }
+.m-nav .m-item small { position: static; transform: none; opacity: 1; font-size: 13px; letter-spacing: 0; font-weight: 500; color: var(--muted); }
+.m-nav .m-play { padding: 18px 20px; background: linear-gradient(135deg, var(--accent), #5d7bff); border-color: transparent; box-shadow: 0 14px 34px -12px rgba(62,166,255,.85); }
+.m-nav .m-play:hover, .m-nav .m-play:focus-visible { background: linear-gradient(135deg, #5ab4ff, #6d88ff); border-color: transparent; }
+.m-play > i { background: rgba(255,255,255,.2); color: #fff; }
+.m-play b { font-size: 24px; }
+.m-nav .m-play small { color: rgba(255,255,255,.85); }
+
+/* Play: Fly / Drive picker */
+.p-vehicle { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 640px; margin-bottom: 14px; }
+.p-veh { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 16px; text-align: left;
+  background: var(--panel); border: 1.5px solid var(--line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: border-color .2s, background .2s; }
+.p-veh > i { flex: none; width: 64px; height: 44px; color: var(--muted); transition: color .2s, transform .3s var(--ease); }
+.p-veh > i svg { width: 100%; height: 100%; }
+.p-veh > span { display: flex; flex-direction: column; gap: 2px; }
+.p-veh b { font-size: 20px; }
+.p-veh small { color: var(--muted); font-size: 13px; }
+.p-veh:hover, .p-veh:focus-visible { border-color: rgba(62,166,255,.55); }
+.p-veh.sel { border-color: var(--accent); background: rgba(62,166,255,.14); box-shadow: inset 0 0 0 1px var(--accent); }
+.p-veh.sel > i { color: var(--accent); }
+.p-veh[data-vmode="flight"].sel > i { transform: translateY(-3px); }
+.s-play .p-modes { margin-top: auto; }
+
+/* Help overlay ("?") */
+.s-howto.ui-modal { padding: calc(16px + var(--safe-t)) 16px calc(16px + var(--safe-b)); }
+.hp-dialog { width: min(760px, 100%); max-height: 100%; overflow-y: auto; gap: 14px; text-align: left; }
+.hp-head { display: flex; align-items: center; justify-content: space-between; }
+.hp-dialog h2 { margin: 0; text-align: left; letter-spacing: 0; text-transform: none; font-size: 22px; }
+.hp-close { width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,.08); font-size: 15px; }
+.hp-close:hover, .hp-close:focus-visible { background: rgba(255,255,255,.16); }
+.s-howto .ht-body { width: 100%; }
+.hp-actions { display: flex; gap: 10px; }
+.ui-dialog .hp-about { margin: 0; color: var(--muted); font-size: 12px; text-align: left; }
+.st-btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.st-btns .st-reset { margin-top: 0; }
+
+/* Welcome (first launch) */
+.s-welcome { align-items: center; justify-content: flex-end; padding-bottom: calc(48px + var(--safe-b)); pointer-events: auto; }
+.s-welcome::before { content: ""; position: absolute; inset: 0; background: linear-gradient(0deg, rgba(5,6,9,.92) 0%, rgba(5,6,9,.55) 40%, transparent 70%); pointer-events: none; }
+.w-card { position: relative; width: min(520px, 100%); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.w-kicker { font-size: 12px; letter-spacing: .4em; color: var(--accent); padding-left: .4em; }
+.w-card h2 { margin: 0; font-size: clamp(30px, 5vw, 46px); font-weight: 850; letter-spacing: -.02em; }
+.w-card p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.5; }
+.w-card p b { color: var(--text); display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line); font-size: 13px; }
+.w-go { margin-top: 10px; min-width: 260px; font-size: 17px; min-height: 56px; }
+.w-skip { color: var(--muted); font-size: 14px; padding: 8px; text-decoration: underline; text-underline-offset: 3px; }
+.w-skip:hover, .w-skip:focus-visible { color: var(--text); }
+.ui-root[data-screen="welcome"] .ui-vignette { background: none; }
+
+/* Phones */
+@media (max-width: 760px), (max-height: 520px) {
+  .s-main .m-nav { width: min(320px, 100%); gap: 8px; }
+  .m-nav .m-item { padding: 10px 14px; }
+  .m-item b { font-size: 17px; }
+  .m-play b { font-size: 20px; }
+  .m-item small { font-size: 12px; }
+  .m-item > i { width: 34px; height: 34px; }
+  .p-veh { padding: 10px 12px; gap: 10px; }
+  .p-veh > i { width: 48px; height: 34px; }
+  .p-veh b { font-size: 17px; }
+  .p-vehicle { margin-bottom: 10px; }
+  .ui-help { width: 34px; height: 34px; }
+}
+@media (orientation: portrait) and (max-width: 760px) {
+  .ui-topbar { flex-wrap: nowrap; }
+  .ui-brand { display: none; }
+  .ui-wallet { width: 100%; justify-content: flex-end; }
+  .s-main .m-nav { align-self: stretch; width: 100%; margin-top: auto; margin-bottom: 0; }
+  .s-main .m-nav button { font-size: 15px; }
+  .p-vehicle { grid-template-columns: 1fr 1fr; }
+  .p-veh { flex-direction: column; text-align: center; }
+  .p-veh small { display: none; }
+  .s-play .p-modes { grid-template-columns: 1fr 1fr; }
+  .p-mode p { display: block; font-size: 12px; }
+  .s-welcome { padding-bottom: calc(28px + var(--safe-b)); }
+  .w-go { width: 100%; }
+}
+@media (max-width: 760px), (max-height: 520px) {
+  .s-play .p-mode { min-height: 0; justify-content: flex-start; }
+  .s-play .p-mode .p-icon { position: static; font-size: 20px; margin-bottom: 6px; }
+}

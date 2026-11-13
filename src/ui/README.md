@@ -37,3 +37,10 @@ Graphics helpers: `detectQuality()`, `resolveGraphics(settings)`, `createAdaptiv
 ## Devices and How to drive
 
 `device.js` watches what the player actually uses (finger, key, controller) and the UI follows it when Controls is on Auto: touch controls, the title prompt, the Settings controls list and the How to drive screen all show only that device. `howto.js` builds the How to drive screen: the current device's controls big, a "Tilt to steer" card on phones and tablets with motion sensors, and the other devices folded under "Using something else?". The first race on a device opens it first; the first three races show a one-line reminder. Tilt is owned by `touch.js` (the engine's own tilt stays off when this UI is loaded) and only counts as on once the sensor reports.
+
+## Menu structure (user-first redesign)
+
+- Main menu has three items: Play, Garage, Settings. Profile and credits sit in the top bar, next to a `?` help button.
+- First launch shows a Welcome card that starts the tutorial (or skips it). It is shown while `settings.tutorialSeen` and `profile.tutorialDone` are both false. Replay it from `?` or Settings > Gameplay.
+- Fly / Drive is chosen at the top of the Play screen. It changes the mode descriptions, filters Career events (`event.vehicleMode`) and tracks (`track.modes`), lifts the showroom car into a hover in Fly, and emits `vehiclemode` plus `settings`.
+- The `?` opens a help overlay with controls for the current device and vehicle (also "Controls" in the pause menu). The old How to play screen and the first-race gate are gone.
