@@ -29,10 +29,14 @@ export function createHUD(root, getSettings) {
       <canvas class="h-dial" width="440" height="440"></canvas>
       <div class="h-readout"><b class="h-speed">0</b><span class="h-unit">KM/H</span><i class="h-gear">D</i></div>
       <div class="h-bars">
+        <div class="h-bar h-thrust"><label>THRUST</label><div><i></i></div></div>
         <div class="h-bar h-boost"><label>BOOST</label><div><i></i></div></div>
         <div class="h-bar h-batt"><label>BATTERY</label><div><i></i></div></div>
       </div>
     </div>
+    <div class="h-rings"><span>NEXT RING</span><b class="h-ring-n">-</b><i>/</i><b class="h-ring-t">-</b></div>
+    <div class="h-alt"><span>ALT</span><b class="h-alt-v">0</b><em class="h-alt-u">m</em><i class="h-vs"></i></div>
+    <div class="h-arrow"><i></i></div>
     <div class="h-drift"><b>0</b><span class="h-dlabel">DRIFT</span></div>
     <div class="h-note"></div>
     <div class="h-msg"></div>
@@ -46,8 +50,9 @@ export function createHUD(root, getSettings) {
   const map = $('.h-map'), mctx = map.getContext('2d');
   const r = { speed: $('.h-speed'), unit: $('.h-unit'), gear: $('.h-gear'), cur: $('.h-cur'), best: $('.h-best'),
     pos: $('.h-pos'), lap: $('.h-lap'), boost: $('.h-boost i'), batt: $('.h-batt i'), drift: $('.h-drift'),
-    msg: $('.h-msg'), wrong: $('.h-wrong'), ghost: $('.h-ghost'), elim: $('.h-elim'), fps: $('.h-fps'), note: $('.h-note'), extra: $('.h-extra'), dlabel: $('.h-dlabel') };
+    msg: $('.h-msg'), wrong: $('.h-wrong'), ghost: $('.h-ghost'), elim: $('.h-elim'), fps: $('.h-fps'), note: $('.h-note'), ringN: $('.h-ring-n'), ringT: $('.h-ring-t'), rings: $('.h-rings'), alt: $('.h-alt-v'), altU: $('.h-alt-u'), vs: $('.h-vs'), arrow: $('.h-arrow'), thrust: $('.h-thrust i'), extra: $('.h-extra'), dlabel: $('.h-dlabel') };
 
+  let mode = 'ground', lastAlt = null, vsSmooth = 0;
   let lastNote = '', noteTimer = 0, shownSpeed = 0, lastMsg = '', msgTimer = 0, lastDrift = 0, mapBounds = null, mapPts = null;
   let last = {};
   const setText = (node, key, v) => { if (last[key] !== v) { node.textContent = v; last[key] = v; } };
@@ -109,6 +114,9 @@ export function createHUD(root, getSettings) {
 
   return {
     el,
+    /** 'flight' shows altitude, rings, thrust and the off-course arrow; 'ground' shows race info. */
+    setMode(m) { mode = m === 'flight' ? 'flight' : 'ground'; el.classList.toggle('flight', mode === 'flight'); last = {}; lastAlt = null; },
+    get mode() { return mode; },
     show(v) { el.classList.toggle('show', v); if (v) { last = {}; } },
     /** Center message, e.g. '3', 'GO!', 'FINAL LAP'. Auto-hides after `secs`. */
     flash(text, secs = 1.2) {
@@ -118,7 +126,7 @@ export function createHUD(root, getSettings) {
     update(d = {}, dt = 1 / 60) {
       const s = getSettings();
       const mph = s.units === 'mph';
-      const speed = Math.abs(d.speedKmh || 0) * (mph ? 0.621371 : 1);
+      const speed = Math.abs((mode === 'flight' ? (d.airspeedKmh ?? d.speedKmh) : d.speedKmh) || 0) * (mph ? 0.621371 : 1);
       shownSpeed += (speed - shownSpeed) * Math.min(1, dt * 12);
       setText(r.speed, 'speed', String(Math.round(shownSpeed)));
       setText(r.unit, 'unit', mph ? 'MPH' : 'KM/H');
@@ -156,6 +164,33 @@ export function createHUD(root, getSettings) {
       const chain = d.driftChain ? ` · ${d.driftChain} CHAIN` : '';
       setText(r.dlabel, 'dlabel', `DRIFT${d.driftMult > 1 ? ' ×' + (+d.driftMult).toFixed(1) : ''}${chain}`);
       r.wrong.classList.toggle('on', !!d.wrongWay);
+
+      // ---- flight ----
+      if (mode === 'flight') {
+        if (d.altitude != null) {
+          const ft = s.units === 'mph';
+          const alt = d.altitude * (ft ? 3.28084 : 1);
+          setText(r.alt, 'alt', Math.round(alt).toLocaleString());
+          setText(r.altU, 'altU', ft ? 'ft' : 'm');
+          // Vertical-speed caret: smoothed climb/descent rate.
+          if (lastAlt != null && dt > 0) vsSmooth += ((d.altitude - lastAlt) / dt - vsSmooth) * Math.min(1, dt * 4);
+          lastAlt = d.altitude;
+          r.vs.className = 'h-vs ' + (vsSmooth > 1.5 ? 'up' : vsSmooth < -1.5 ? 'down' : '');
+        }
+        if (d.rings) {
+          const total = d.rings.total ?? 0, next = Math.min(total, (d.rings.hit ?? 0) + 1);
+          setText(r.ringN, 'ringN', String(next)); setText(r.ringT, 'ringT', String(total));
+          r.rings.classList.toggle('all', total > 0 && (d.rings.hit ?? 0) >= total);
+        }
+        r.thrust.style.width = `${Math.round(Math.max(0, Math.min(1, d.thrust ?? 0)) * 100)}%`;
+        const dir = d.nextRingDir;
+        if (dir && (dir.x || dir.y)) {
+          const len = Math.hypot(dir.x, dir.y) || 1, ux = dir.x / len, uy = dir.y / len;
+          // Place the arrow on an ellipse around screen centre, pointing toward the ring.
+          r.arrow.style.transform = `translate(${ux * 34}vw, ${uy * 30}vh) rotate(${Math.atan2(uy, ux)}rad)`;
+          r.arrow.classList.add('on');
+        } else r.arrow.classList.remove('on');
+      }
       if (d.ghostDelta != null) {
         const g = d.ghostDelta;
         r.ghost.textContent = `${g <= 0 ? '−' : '+'}${Math.abs(g).toFixed(2)}`;

@@ -25,3 +25,11 @@ Options: `opts.upgradeCosts = { motor: [...], inverter: [...], tires: [...], bat
 Other calls: `ui.showMenu()`, `ui.pause()`, `ui.showResults({...})`, `ui.setLoading(0..1, text)`, `ui.toast(text)`, `ui.setProfile({...})`, `ui.setCatalog({ paints, wheels })`, `ui.setResolvedQuality(tier)`.
 
 Graphics helpers: `detectQuality()`, `resolveGraphics(settings)`, `createAdaptiveQuality(tier, onChange)` (steps quality down when FPS stays under 40, never back up to a tier that was too slow).
+
+## Flight mode, tutorial, account
+
+- `start` now carries `vehicleMode: 'flight' | 'ground'` (top-bar toggle, default flight). The tutorial starts with `mode: 'tutorial'`.
+- Flight HUD fields: `altitude` (m), `airspeedKmh` (falls back to `speedKmh`), `rings: { hit, total }`, `nextRingDir: { x, y }` (screen-space unit vector, `null` hides the arrow), `thrust` (0..1). `ui.hud.setMode('flight' | 'ground')` is called on start.
+- Touch flight controls feed `ui.input.pitch` (+ = nose up, stick down), `roll`, `yaw`, `thrust` (lever, stays put), `boost`, `brake`. All controls are multi-touch.
+- Tutorial: `ui.tutorial.show({ id, text, keyHint, touchHint?, step?, total? })`, `ui.tutorial.done(id)`, `ui.tutorial.hide()`, `ui.tutorial.complete()`. Emits `tutorial` `{ action: 'show' | 'skip' | 'complete', id? }`. The first Play in flight mode offers the tutorial once.
+- Account: emits `auth` `{ action: 'signin' | 'signup' | 'signout' | 'guest', email?, password? }`. Reflect results with `ui.setAccount({ signedIn, email, name, error })`. Passwords are cleared from the form after submit and never stored.
