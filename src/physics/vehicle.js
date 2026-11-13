@@ -146,7 +146,9 @@ export class Vehicle {
       this.vx -= 1.35 * vn * nx; this.vz -= 1.35 * vn * nz;
       const scrub = Math.max(0.55, 1 - vn * 0.03);
       this.vx *= scrub; this.vz *= scrub;
-      this.yawRate *= 0.5;
+      // knock the nose straight, but never stop it turning away from the wall (or you stay pinned)
+      const away = this.yawRate * (Math.cos(this.yaw) * nx - Math.sin(this.yaw) * nz) < 0;
+      if (!away) this.yawRate *= 0.5;
       this.impact = Math.max(this.impact, vn);
       this.drifting = false;
     }

@@ -9,7 +9,7 @@ import { carStats } from '../physics/vehicle.js';
 import { loadModules } from './registry.js';
 import { buildCareer, buildFlightCareer, totalStars, starsFor, EVENT_TYPES, UPGRADE_COST, MAX_UPGRADE } from './career.js';
 import { Race } from './race.js';
-import { FlightRace } from './flightRace.js';
+import { HopRace } from './hopRace.js';
 import { attachMultiplayer } from '../multiplayer/game-bridge.js';
 import { attachAccounts } from './accounts.js';
 
@@ -45,7 +45,10 @@ export class Game {
 
     this.worlds = this.mods.worlds.WORLDS;
     const groundWorlds = this.worlds.filter((w) => !w.modes || w.modes.includes('ground'));
-    const flightWorlds = this.worlds.filter((w) => !w.modes || w.modes.includes('flight'));
+    // Fly mode is jet hops off a road, so it runs on worlds with a drivable road (or 'hop' worlds).
+    const hopOk = (w) => !w.modes || w.modes.includes('ground') || w.modes.includes('hop');
+    this.hopOk = hopOk;
+    const flightWorlds = this.worlds.filter(hopOk);
     this.career = [...buildFlightCareer(flightWorlds), ...buildCareer(groundWorlds).map((e) => ({ ...e, id: e.id, vehicleMode: 'ground' }))];
 
     setLoading('Building menus…', 0.7);
@@ -72,7 +75,7 @@ export class Game {
     const opts = {
       root: document.body, THREE,
       settings: this.profile.settings,
-      tracks: this.worlds.map((w) => ({ id: w.id, name: w.name, desc: w.description, description: w.description, unlock: w.unlock ?? w.unlockStars ?? 0, modes: w.modes })),
+      tracks: this.worlds.map((w) => ({ id: w.id, name: w.name, desc: w.description, description: w.description, unlock: w.unlock ?? w.unlockStars ?? 0, modes: [...(this.hopOk(w) ? ['flight'] : []), ...(!w.modes || w.modes.includes('ground') ? ['ground'] : [])] })),
       modes: [
         { id: 'career', name: 'Career', icon: '★', desc: 'Win events, earn credits and stars, unlock new tracks.' },
         { id: 'quick', name: 'Quick Race', icon: '⚑', desc: 'Jump straight into a race against AI pilots.' },
@@ -298,6 +301,7 @@ export class Game {
     }
     const wd = this.worlds.find((w) => w.id === cfg.worldId);
     if (!wd) cfg.worldId = this.worlds[0].id;
+    if (cfg.flight && wd && !this.hopOk(wd)) cfg.worldId = (this.worlds.find(this.hopOk) || this.worlds[0]).id;
     if (!cfg.flight && wd && wd.modes && !wd.modes.includes('ground')) cfg.worldId = (this.worlds.find((w) => !w.modes || w.modes.includes('ground')) || this.worlds[0]).id;
     this.lastCfg = cfg;
     this.launch(cfg);
@@ -309,7 +313,7 @@ export class Game {
     if (this.ui.setLoading) this.ui.setLoading(0.3, 'Loading track…'); else this.ui.toast && this.ui.toast('Loading track…');
     const go = () => {
       try {
-        const race = cfg.flight ? new FlightRace(this, cfg) : new Race(this, cfg);
+        const race = cfg.flight ? new HopRace(this, cfg) : new Race(this, cfg);
         race.build();
         this.race = race;
         this.state = 'race';

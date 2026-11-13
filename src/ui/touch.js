@@ -185,8 +185,15 @@ export function createTouchControls(root, input, getSettings, onPause, onTiltTog
   return {
     el,
     enableTilt,
-    /** 'flight' shows the stick + thrust lever, 'ground' the steering slider + pedals. */
-    setMode(m) { layout = m === 'flight' ? 'flight' : 'ground'; el.classList.toggle('flight', layout === 'flight'); },
+    // Fly mode is now jet hops: it keeps the driving controls and the DRIFT button becomes JET.
+    setMode(m) {
+      layout = 'ground';
+      const hop = m === 'flight' || m === 'hop';
+      el.classList.remove('flight');
+      el.classList.toggle('hop', hop);
+      const hb = el.querySelector('[data-btn="handbrake"]');
+      if (hb) { hb.textContent = hop ? 'JET' : 'DRIFT'; hb.setAttribute('aria-label', hop ? 'Jets' : 'Handbrake'); }
+    },
     setThrust,
     ensureTilt,
     refreshTiltLook,
