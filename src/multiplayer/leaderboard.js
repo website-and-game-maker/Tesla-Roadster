@@ -45,6 +45,12 @@ function uuid() {
   });
 }
 
+const MODES = ['solo', 'online', 'flight'];
+const modeOf = (m) => (MODES.includes(m) ? m : 'solo');
+
+/** Flight time attack passes courseId; driving passes trackId. Both land in track_id. */
+const normalize = (e) => ({ ...e, trackId: e.trackId ?? e.courseId });
+
 export function validateEntry({ trackId, lapMs, name }) {
   if (!Number.isFinite(lapMs) || lapMs < MIN_LAP_MS || lapMs > MAX_LAP_MS) return 'bad lap time';
   if (!trackId || String(trackId).length > 40) return 'bad track';
@@ -91,7 +97,8 @@ class LocalLeaderboard {
     return mine.length ? Math.min(...mine.map((r) => r.lapMs)) : null;
   }
 
-  async submit(entry) {
+  async submit(rawEntry) {
+    const entry = normalize(rawEntry);
     const err = validateEntry(entry);
     if (err) throw new Error(err);
     const prev = this.personalBest(entry.trackId);
@@ -100,7 +107,7 @@ class LocalLeaderboard {
       lapMs: Math.round(entry.lapMs),
       color: entry.color || '#c8102e',
       carId: entry.carId || 'roadster',
-      mode: entry.mode === 'online' ? 'online' : 'solo',
+      mode: modeOf(entry.mode),
       playerId: this.playerId,
       createdAt: new Date().toISOString(),
     };
@@ -160,7 +167,8 @@ class SupabaseLeaderboard {
     }
   }
 
-  async submit(entry) {
+  async submit(rawEntry) {
+    const entry = normalize(rawEntry);
     const result = await this.local.submit(entry); // validates + local PB
     try {
       await this._req('/lap_times', {
@@ -173,7 +181,7 @@ class SupabaseLeaderboard {
           lap_ms: Math.round(entry.lapMs),
           color: entry.color || '#c8102e',
           car_id: entry.carId || 'roadster',
-          mode: entry.mode === 'online' ? 'online' : 'solo',
+          mode: modeOf(entry.mode),
         }),
       });
       return { ...result, rank: null, uploaded: true };

@@ -46,6 +46,10 @@ export function packState(s, hostTime) {
     pr: r(s.progress || 0, 100000),
     // Optional visual extras the renderer may use (brake lights, drift smoke, boost).
     fx: s.fx | 0,
+    // Flight: full 3D attitude is already in q; m=1 switches remotes to flight pose.
+    m: s.mode === 'flight' ? 1 : 0,
+    th: r(s.thrust || 0, 100),
+    ri: s.ringIndex | 0,
   };
 }
 
@@ -61,6 +65,9 @@ export function unpackState(w) {
     lap: w.lap,
     progress: w.pr,
     fx: w.fx,
+    mode: w.m === 1 ? 'flight' : 'drive',
+    thrust: w.th || 0,
+    ringIndex: w.ri | 0,
   };
 }
 

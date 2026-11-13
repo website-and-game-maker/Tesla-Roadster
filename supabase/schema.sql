@@ -61,3 +61,49 @@ create or replace view public.best_laps with (security_invoker = true) as
    order by track_id, player_id, lap_ms asc, created_at asc;
 
 grant select on public.best_laps to anon, authenticated;
+
+-- ===================================================================
+-- Accounts & cloud saves
+-- Auth itself is built into Supabase (Authentication -> Providers):
+--   * Email: on (turn "Confirm email" off if you want instant sign-up)
+--   * Anonymous sign-ins: on (guest accounts that can later add an email)
+-- Each player gets one row holding their JSON save. Players can only
+-- read and write their own row.
+
+create table if not exists public.profiles (
+  id          uuid primary key references auth.users (id) on delete cascade,
+  data        jsonb       not null default '{}'::jsonb check (pg_column_size(data) < 1048576),
+  updated_at  timestamptz not null default now()
+);
+
+alter table public.profiles enable row level security;
+
+drop policy if exists "read own profile" on public.profiles;
+create policy "read own profile" on public.profiles
+  for select to authenticated using (auth.uid() = id);
+
+drop policy if exists "create own profile" on public.profiles;
+create policy "create own profile" on public.profiles
+  for insert to authenticated with check (auth.uid() = id);
+
+drop policy if exists "update own profile" on public.profiles;
+create policy "update own profile" on public.profiles
+  for update to authenticated using (auth.uid() = id) with check (auth.uid() = id);
+
+grant select, insert, update on public.profiles to authenticated;
+
+create or replace function public.profiles_touch() returns trigger
+language plpgsql as $$
+begin
+  new.updated_at := now();
+  return new;
+end $$;
+
+drop trigger if exists profiles_touch on public.profiles;
+create trigger profiles_touch before insert or update on public.profiles
+  for each row execute function public.profiles_touch();
+
+-- Flight time attack uses the same lap_times table: track_id holds the course id
+-- and mode is 'flight'. Widen the allowed modes (safe to re-run).
+alter table public.lap_times drop constraint if exists lap_times_mode_check;
+alter table public.lap_times add constraint lap_times_mode_check check (mode in ('solo', 'online', 'flight'));

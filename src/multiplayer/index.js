@@ -17,9 +17,21 @@ import { resolveConfig } from './config.js';
 import { PeerTransport, MultiplayerError } from './transport.js';
 import { RaceSession } from './session.js';
 import { createLeaderboard } from './leaderboard.js';
+import { createAccount } from './account.js';
+import { MP_CONFIG } from './config.js';
 import { makeRoomCode, normalizeRoomCode, isValidRoomCode, roomPeerId, quickPeerId, FX } from './protocol.js';
 
 export { FX, MultiplayerError, normalizeRoomCode, isValidRoomCode };
+export { createAccount, AccountError } from './account.js';
+
+/**
+ * Free accounts + cloud saves (Supabase). Local-only when config.supabase is blank:
+ * auth.enabled === false, cloud.loadProfile() -> null, cloud.saveProfile() -> { saved: false }.
+ */
+const account = createAccount(MP_CONFIG);
+export const auth = account.auth;
+export const cloud = account.cloud;
+if (typeof addEventListener === 'function') addEventListener('pagehide', () => cloud.flush());
 
 const FORWARDED = [
   'lobby',

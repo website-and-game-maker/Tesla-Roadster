@@ -397,7 +397,7 @@ export class Race {
 
     // end of race flow
     if (this.state === 'finished' && this.stateT > 3.5 && !this.ended && !this.online) this.endRace();
-    if (this.online) this.online.postUpdate(this);
+    if (this.online) this.online.postUpdate(this, dt);
     if (this.cfg.type === 'free' && this.state === 'race') this.message = this.message === 'GO!' ? 'GO!' : '';
   }
 

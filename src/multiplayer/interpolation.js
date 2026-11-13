@@ -122,6 +122,7 @@ export class SnapshotBuffer {
       v: [lerp(a.v[0], b.v[0], u), lerp(a.v[1], b.v[1], u), lerp(a.v[2], b.v[2], u)],
       speed: lerp(a.speed ?? 0, b.speed ?? 0, u),
       steer: lerp(a.steer ?? 0, b.steer ?? 0, u),
+      thrust: lerp(a.thrust ?? 0, b.thrust ?? 0, u),
       extrapolated: false,
     };
   }
