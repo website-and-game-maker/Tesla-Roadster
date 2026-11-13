@@ -1,6 +1,8 @@
 // Mobile touch controls: drag-anywhere steering on the left, pedals and buttons on the right,
 // optional tilt steering. Writes into input.touchState.
-export function createTouchControls(root, input, getSettings, onPause) {
+import { canTilt } from './device.js';
+
+export function createTouchControls(root, input, getSettings, onPause, onTiltToggle) {
   const el = document.createElement('div');
   el.className = 'ui-touch';
   el.innerHTML = `
@@ -8,6 +10,7 @@ export function createTouchControls(root, input, getSettings, onPause) {
       <div class="t-steer-track"><div class="t-steer-knob"></div></div>
       <span class="t-hint">Drag to steer</span>
     </div>
+    ${canTilt() ? '<button class="t-tilt" aria-pressed="false"><span aria-hidden="true">📱</span> Tilt to steer</button>' : ''}
     <div class="t-right">
       <button class="t-btn t-boost" data-btn="boost" aria-label="Boost">⚡</button>
       <button class="t-btn t-hand" data-btn="handbrake" aria-label="Handbrake">DRIFT</button>
@@ -25,8 +28,25 @@ export function createTouchControls(root, input, getSettings, onPause) {
 
   const setKnob = (v) => { knob.style.transform = `translateX(${v * RANGE()}px)`; };
 
+  const hint = el.querySelector('.t-hint');
+  const tiltBtn = el.querySelector('.t-tilt');
+  const tiltActive = () => !!getSettings().tiltSteer && tiltOn;
+  // The steering strip says what steers the car right now, and the in-race pill shows tilt's state.
+  function refreshTiltLook() {
+    const on = tiltActive();
+    hint.textContent = on ? 'Tilt to steer' : 'Drag to steer';
+    zone.classList.toggle('tilting', on);
+    if (tiltBtn) {
+      tiltBtn.classList.toggle('on', on);
+      tiltBtn.setAttribute('aria-pressed', String(on));
+      tiltBtn.lastChild.textContent = on ? ' Tilt is on' : ' Tilt to steer';
+    }
+    if (!on && steerId === null) { setKnob(0); ts.steer = 0; }
+  }
+  tiltBtn?.addEventListener('click', async () => { await onTiltToggle?.(); refreshTiltLook(); });
+
   zone.addEventListener('pointerdown', (e) => {
-    if (getSettings().tiltSteer) return;
+    if (tiltActive()) return;
     steerId = e.pointerId; steerX0 = e.clientX;
     zone.setPointerCapture(e.pointerId); zone.classList.add('on');
     ts.active = true;
@@ -63,7 +83,7 @@ export function createTouchControls(root, input, getSettings, onPause) {
   // Tilt steering (landscape). iOS requires a permission prompt from a user gesture.
   let tiltOn = false;
   const onTilt = (e) => {
-    if (!getSettings().tiltSteer) return;
+    if (!getSettings().tiltSteer || steerId !== null) return;
     const landscape = (screen.orientation?.angle ?? window.orientation ?? 0);
     const raw = Math.abs(landscape) === 90 ? (e.beta || 0) * Math.sign(landscape) : (e.gamma || 0);
     const v = Math.max(-1, Math.min(1, raw / 30));
@@ -75,14 +95,34 @@ export function createTouchControls(root, input, getSettings, onPause) {
       if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
         if (await DeviceOrientationEvent.requestPermission() !== 'granted') return false;
       }
+      // Some tablets and laptops have the API but no motion sensor. Only call tilt "on"
+      // once the sensor actually reports, so it never looks on while steering does nothing.
+      const works = await new Promise((resolve) => {
+        const probe = (e) => { if (e.beta != null || e.gamma != null) { done(true); } };
+        const done = (v) => { clearTimeout(timer); removeEventListener('deviceorientation', probe); resolve(v); };
+        const timer = setTimeout(() => done(false), 1500);
+        addEventListener('deviceorientation', probe);
+      });
+      if (!works) return false;
       addEventListener('deviceorientation', onTilt); tiltOn = true; return true;
     } catch { return false; }
+  }
+  // A saved "tilt on" from last time needs the sensor listener again. iPhones only allow
+  // that from a tap, so this is called on the first tap and again at each race start.
+  async function ensureTilt() {
+    if (!getSettings().tiltSteer) { refreshTiltLook(); return true; }
+    const ok = await enableTilt();
+    refreshTiltLook();
+    return ok;
   }
 
   return {
     el,
     enableTilt,
-    show(v) { el.classList.toggle('show', v); if (!v) { Object.assign(ts, { steer: 0, throttle: 0, brake: 0, handbrake: false, boost: false }); setKnob(0); } },
+    ensureTilt,
+    refreshTiltLook,
+    get tiltActive() { return tiltActive(); },
+    show(v) { el.classList.toggle('show', v); if (!v) { Object.assign(ts, { steer: 0, throttle: 0, brake: 0, handbrake: false, boost: false }); setKnob(0); } else refreshTiltLook(); },
     setBoostReady(ready) { el.querySelector('.t-boost').classList.toggle('ready', ready); },
   };
 }

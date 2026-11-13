@@ -25,3 +25,7 @@ Options: `opts.upgradeCosts = { motor: [...], inverter: [...], tires: [...], bat
 Other calls: `ui.showMenu()`, `ui.pause()`, `ui.showResults({...})`, `ui.setLoading(0..1, text)`, `ui.toast(text)`, `ui.setProfile({...})`, `ui.setCatalog({ paints, wheels })`, `ui.setResolvedQuality(tier)`.
 
 Graphics helpers: `detectQuality()`, `resolveGraphics(settings)`, `createAdaptiveQuality(tier, onChange)` (steps quality down when FPS stays under 40, never back up to a tier that was too slow).
+
+## Devices and How to drive
+
+`device.js` watches what the player actually uses (finger, key, controller) and the UI follows it when Controls is on Auto: touch controls, the title prompt, the Settings controls list and the How to drive screen all show only that device. `howto.js` builds the How to drive screen: the current device's controls big, a "Tilt to steer" card on phones and tablets with motion sensors, and the other devices folded under "Using something else?". The first race on a device opens it first; the first three races show a one-line reminder. Tilt is owned by `touch.js` (the engine's own tilt stays off when this UI is loaded) and only counts as on once the sensor reports.

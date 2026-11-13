@@ -12,6 +12,11 @@ export const MP_CONFIG = {
 
   maxPlayers: 8,
 
+  // Kid-safe rooms: no chat and no typed names. Every driver gets a made-up name
+  // ("Teal Otter") that the host picks from fixed word lists, so no free text from
+  // one player ever reaches another. The kids' game site turns this on.
+  kidSafe: false,
+
   // Network rates.
   stateSendHz: 20, // client -> host car state
   relayHz: 20, // host -> clients batched states
