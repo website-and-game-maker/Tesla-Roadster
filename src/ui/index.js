@@ -17,6 +17,21 @@ import { DEFAULT_PAINTS, DEFAULT_WHEELS, DEFAULT_TRACKS, DEFAULT_MODES, UPGRADES
 export { detectQuality, resolveGraphics, createAdaptiveQuality, QUALITY_PRESETS, loadSettings, buildPlaceholderRoadster };
 export { DEFAULT_PAINTS, DEFAULT_WHEELS, DEFAULT_TRACKS, DEFAULT_MODES, UPGRADES };
 
+// Original inline icons (stroke = currentColor so they follow the theme).
+const CAR_PATH = 'M6 25c1.5-4.5 6-6.5 14-7.5l7.5-5c3.5-2 11-2.2 15 .3l8 5.2c5 .8 8.5 3 9.5 7z';
+const ICON = {
+  fly: `<svg viewBox="0 0 64 44" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="${CAR_PATH}" transform="translate(0 -6)"/><circle cx="18" cy="19.5" r="3.6"/><circle cx="48" cy="19.5" r="3.6"/>
+    <path d="M2 10h7M0 15h5" opacity=".6"/><path d="M18 27v5M48 27v5M33 27v7" stroke-dasharray="2 3" opacity=".75"/>
+    <path d="M4 41h56" stroke-dasharray="3 5" opacity=".45"/></g></svg>`,
+  drive: `<svg viewBox="0 0 64 44" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="${CAR_PATH}" transform="translate(0 6)"/><circle cx="18" cy="31.5" r="3.6"/><circle cx="48" cy="31.5" r="3.6"/>
+    <path d="M2 38h60"/><path d="M8 42h8M28 42h8M48 42h8" opacity=".5"/></g></svg>`,
+  play: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>`,
+  garage: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 4l9 6.5V20H3z"/><path d="M7 20v-6h10v6M7 17h10"/></g></svg>`,
+  settings: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></g></svg>`,
+};
+
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
 const fmtCr = (n) => `${Math.round(n).toLocaleString()} cr`;
@@ -166,10 +181,11 @@ export function createUI(opts = {}) {
 
   const topbar = () => `<div class="ui-topbar">
       <div class="ui-brand"><span class="ui-logo">ROADSTER</span></div>
-      <div class="ui-vmode ui-seg" role="radiogroup" aria-label="Vehicle mode">
-        <button data-vmode="flight" role="radio">✈ Flight</button><button data-vmode="ground" role="radio">⛟ Ground</button>
+      <div class="ui-wallet">
+        <span class="ui-credits" title="Credits: earn them in races, spend them in the Garage"><b data-bind="credits">0</b> cr</span>
+        <button class="ui-profile" data-go="account" title="Your profile"><i>●</i><b data-bind="accountName">Guest</b></button>
+        <button class="ui-help" data-act="help" aria-label="Help: controls and tips" title="Help">?</button>
       </div>
-      <div class="ui-wallet"><button class="ui-profile" data-go="account"><i>●</i><b data-bind="accountName">Guest</b></button><span class="ui-stars">★ <b data-bind="stars">0</b></span><span class="ui-credits"><b data-bind="credits">0</b> cr</span></div>
     </div>`;
   const backBtn = (label = 'Back') => `<button class="ui-back" data-act="back" aria-label="${label}"><span>‹</span> ${label}</button>`;
 
@@ -184,21 +200,17 @@ export function createUI(opts = {}) {
     <div class="t-foot">v0.1 · ${esc(detected.tier.toUpperCase())} GRAPHICS DETECTED</div>
   </section>`));
   const PROMPT = { touch: 'Tap to start', keyboard: 'Press any key', gamepad: 'Press A to start' };
-  const leaveTitle = () => { if (current !== 'title') return; sfx('click'); emit('interact'); touchCtl.ensureTilt(); go('main', { replace: true }); };
+  const leaveTitle = () => { if (current !== 'title') return; sfx('click'); emit('interact'); touchCtl.ensureTilt(); go(needsTutorial() ? 'welcome' : 'main', { replace: true }); };
   title.addEventListener('pointerup', leaveTitle);
   addEventListener('keydown', (e) => { if (current === 'title' && !e.repeat) leaveTitle(); });
 
   // Main menu
   const mainEl = mount('main', h(`<section class="s-main">
     ${topbar()}
-    <nav class="m-nav">
-      <button data-go="play" class="m-big" data-autofocus><small>01</small>Play</button>
-      <button data-go="garage"><small>02</small>Garage</button>
-      <button data-act="tutorial"><small>03</small>Tutorial</button>
-      <button data-go="settings"><small>04</small>Settings</button>
-      <button data-go="howto"><small>05</small>How to play</button>
-      <button data-go="account"><small>06</small>Profile</button>
-      <button data-go="about"><small>07</small>About</button>
+    <nav class="m-nav" aria-label="Main menu">
+      <button data-go="play" class="m-item m-play" data-autofocus><i>${ICON.play}</i><span><b>Play</b><small>Races, career and online</small></span></button>
+      <button data-go="garage" class="m-item"><i>${ICON.garage}</i><span><b>Garage</b><small>Paint, wheels and upgrades</small></span></button>
+      <button data-go="settings" class="m-item"><i>${ICON.settings}</i><span><b>Settings</b><small>Graphics, controls and sound</small></span></button>
     </nav>
     <div class="m-hero">
       <div class="m-hero-name">${window.__ROADSTER_NATIVE ? 'ROCKET ROADSTER' : 'TESLA ROADSTER'}</div>
@@ -214,23 +226,31 @@ export function createUI(opts = {}) {
   // Mode select
   const playEl = mount('play', h(`<section class="s-play">
     ${topbar()}
-    <div class="ui-head">${backBtn()}<h2>Choose a mode</h2></div>
-    <div class="p-modes">${modes.map((m, i) => `
+    <div class="ui-head">${backBtn()}<h2>Play</h2></div>
+    <div class="p-vehicle" role="radiogroup" aria-label="Fly or drive">
+      <button class="p-veh" data-vmode="flight" role="radio"><i>${ICON.fly}</i><span><b>Fly</b><small>Race through rings in the sky</small></span></button>
+      <button class="p-veh" data-vmode="ground" role="radio"><i>${ICON.drive}</i><span><b>Drive</b><small>Race on the road</small></span></button>
+    </div>
+    <div class="p-modes"></div>
+  </section>`));
+  const MODE_TEXT = {
+    flight: { career: 'Fly sky courses, earn stars and credits, unlock new worlds.', quick: 'One race through the rings against AI pilots.', timetrial: 'Fly the course alone and beat your best time.', multiplayer: 'Race friends online. Share a room code to play together.' },
+    ground: { career: 'Win road events, earn stars and credits, unlock new tracks.', quick: 'One race on the road against AI drivers.', timetrial: 'Drive alone and beat your best lap.', multiplayer: 'Race friends online. Share a room code to play together.' },
+  };
+  const MODE_NAME = { multiplayer: 'Online' };
+  function renderPlay() {
+    const vm = settings.vehicleMode === 'ground' ? 'ground' : 'flight';
+    playEl.querySelector('.p-modes').innerHTML = modes.map((m, i) => `
       <button class="ui-card p-mode" data-mode="${esc(m.id)}" style="--i:${i}">
         <span class="p-icon">${esc(m.icon || '•')}</span>
-        <b>${esc(m.name)}</b><p>${esc(m.desc)}</p>
-      </button>`).join('')}
-    </div>
-  </section>`));
+        <b>${esc(MODE_NAME[m.id] || m.name)}</b><p>${esc(MODE_TEXT[vm][m.id] || m.desc)}</p>
+      </button>`).join('');
+    refreshBindings();
+  }
+  playEl._onShow = renderPlay;
   playEl.addEventListener('click', (e) => {
     const b = e.target.closest('[data-mode]'); if (!b) return; sfx('click');
     const mode = b.dataset.mode;
-    if (!settings.tutorialSeen && settings.vehicleMode === 'flight' && mode !== 'multiplayer') {
-      settings.tutorialSeen = true; saveSettings(settings);
-      confirmBox('First flight?', 'Take the one-minute tutorial to learn thrust, pitch, and rings.',
-        () => startTutorial(), { yes: 'Start tutorial', no: 'Skip', onNo: () => { playEl.querySelector(`[data-mode="${CSS.escape(mode)}"]`)?.click(); } });
-      return;
-    }
     if (mode === 'career') go('career');
     else if (mode === 'multiplayer') go('multiplayer');
     else go('setup', { data: { mode } });
@@ -239,14 +259,18 @@ export function createUI(opts = {}) {
   // Career
   const careerEl = mount('career', h(`<section class="s-career">
     ${topbar()}
-    <div class="ui-head">${backBtn()}<h2>Career</h2><span class="ui-sub" data-bind="careerProgress"></span></div>
+    <div class="ui-head">${backBtn()}<h2 data-bind="careerTitle">Career</h2><span class="ui-sub" data-bind="careerProgress" title="Stars unlock new events"></span></div>
     <div class="c-grid"></div>
   </section>`));
   careerEl._onShow = renderCareer;
   function renderCareer() {
-    const ev = profile.careerEvents || [];
-    const earned = ev.reduce((a, e) => a + (e.stars || 0), 0);
-    careerEl.querySelector('[data-bind=careerProgress]').textContent = `${earned} / ${ev.length * 3} ★`;
+    // Only show events for the vehicle the player picked on the Play screen.
+    const vm = settings.vehicleMode === 'ground' ? 'ground' : 'flight';
+    const all = profile.careerEvents || [];
+    const ev = all.some((e) => e.vehicleMode) ? all.filter((e) => (e.vehicleMode || 'ground') === vm) : all;
+    const total = typeof profile.stars === 'number' ? profile.stars : ev.reduce((a, e) => a + (e.stars || 0), 0);
+    careerEl.querySelector('[data-bind=careerTitle]').textContent = vm === 'flight' ? 'Sky career' : 'Road career';
+    careerEl.querySelector('[data-bind=careerProgress]').textContent = `★ ${total} earned`;
     careerEl.querySelector('.c-grid').innerHTML = ev.map((e, i) => {
       const t = tracks.find((x) => x.id === e.track);
       return `<button class="ui-card c-event${e.locked ? ' locked' : ''}" data-event="${esc(e.id)}" ${e.locked ? 'disabled' : ''} style="--i:${i}">
@@ -531,9 +555,9 @@ export function createUI(opts = {}) {
       const d = device();
       extra.innerHTML = `<p class="st-note">${settings.controls === 'auto' ? `Auto: you're using a <b>${esc(DEVICE_LABEL[d].toLowerCase())}</b>. It switches by itself when you use something else.` : `Set to <b>${esc(DEVICE_LABEL[d].toLowerCase())}</b>.`}</p>
         <table class="st-keys"><tbody>${controlsFor(d, settings.vehicleMode).map((c) => `<tr><td>${esc(c.what)}</td><td><kbd>${esc(c.key)}</kbd></td></tr>`).join('')}</tbody></table>
-        <button class="ui-secondary st-howto" data-go="howto">How to play</button>`;
+        <button class="ui-secondary st-howto" data-act="help">Show all controls</button>`;
     } else if (settingsTab === 'gameplay') {
-      extra.innerHTML = `<button class="ui-secondary st-reset">Reset all settings</button>`;
+      extra.innerHTML = `<div class="st-btns"><button class="ui-secondary" data-act="tutorial">Replay the tutorial</button><button class="ui-secondary st-reset">Reset all settings</button></div>`;
     } else extra.innerHTML = '';
   }
   function setSetting(key, v) {
@@ -572,36 +596,51 @@ export function createUI(opts = {}) {
   });
 
   // How to drive
-  const howEl = mount('howto', h(`<section class="s-howto">
-    ${topbar()}
-    <div class="ui-head">${backBtn()}<h2>How to play</h2></div>
-    <div class="ht-body"></div>
-    <div class="ht-actions"><button class="ui-primary ht-go" data-howto="go" hidden>Start race <span>›</span></button></div>
+  // Help: the "?" in the corner (and "Controls" in the pause menu). A small overlay with the
+  // controls for the device and vehicle in use, a way to replay the tutorial, and the credits.
+  const howEl = mount('howto', h(`<section class="s-howto ui-modal">
+    <div class="ui-dialog hp-dialog" role="dialog" aria-modal="true" aria-labelledby="hp-title">
+      <div class="hp-head"><h2 id="hp-title">Controls</h2><button class="hp-close" data-act="back" aria-label="Close help">✕</button></div>
+      <div class="ht-body"></div>
+      <div class="hp-actions"><button class="ui-secondary" data-howto="tutorial">Replay the tutorial</button></div>
+      <p class="hp-about">Fan project, not affiliated with or endorsed by Tesla, Inc. Made with Three.js.</p>
+    </div>
   </section>`));
-  let pendingRace = null;
   function renderHowTo() {
     const d = device();
-    howEl.querySelector('.ht-body').innerHTML = howToHTML(d, { tiltAvailable: canTilt(), tiltOn: !!settings.tiltSteer && touchCtl.tiltActive, vehicle: settings.vehicleMode || 'flight' });
-    howEl.querySelector('.ht-go').hidden = !pendingRace;
+    const vm = inRace ? raceVehicle : (settings.vehicleMode || 'flight');
+    howEl.querySelector('#hp-title').textContent = vm === 'flight' ? 'Flying controls' : 'Driving controls';
+    howEl.querySelector('.ht-body').innerHTML = howToHTML(d, { tiltAvailable: canTilt(), tiltOn: !!settings.tiltSteer && touchCtl.tiltActive, vehicle: vm });
+    // Replaying the tutorial mid-race would throw the race away, so only offer it from the menus.
+    howEl.querySelector('.hp-actions').hidden = inRace;
   }
-  howEl._onShow = (data) => { pendingRace = data?.pending || null; renderHowTo(); };
+  howEl._onShow = renderHowTo;
   howEl.addEventListener('click', async (e) => {
+    if (e.target === howEl) { back(); return; }
     const b = e.target.closest('[data-howto]'); if (!b) return;
     sfx('click');
     if (b.dataset.howto === 'tilt') { await toggleTilt(); renderHowTo(); }
-    else if (b.dataset.howto === 'go' && pendingRace) { const cfg = pendingRace; pendingRace = null; store(HOWTO_SEEN, '1'); startRace(cfg); }
+    else if (b.dataset.howto === 'tutorial') startTutorial();
   });
 
-  // About
-  mount('about', h(`<section class="s-about">
-    ${topbar()}
-    <div class="ui-head">${backBtn()}<h2>About</h2></div>
-    <div class="ab-body">
-      <p>An electric hypercar racing game built for the web, phones, and tablets.</p>
-      <p>Fan project. Not affiliated with or endorsed by Tesla, Inc.</p>
-      <p class="ab-small">Made with Three.js.</p>
+  // Welcome: the first thing a new player sees. One clear action (the tutorial), one way out.
+  const welcomeEl = mount('welcome', h(`<section class="s-welcome">
+    <div class="w-card">
+      <div class="w-kicker">WELCOME</div>
+      <h2>Your Roadster can fly.</h2>
+      <p>Take a one-minute first flight to learn thrust, climbing and rings. You can replay it any time from the <b>?</b> button.</p>
+      <button class="ui-primary w-go" data-welcome="go" data-autofocus>Start first flight <span>›</span></button>
+      <button class="w-skip" data-welcome="skip">Skip, I already know how to play</button>
     </div>
   </section>`));
+  welcomeEl.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-welcome]'); if (!b) return;
+    markTutorialSeen();
+    if (b.dataset.welcome === 'go') startTutorial();
+    else { sfx('back'); emit('tutorial', { action: 'skip' }); go('main', { replace: true }); }
+  });
+  function markTutorialSeen() { settings.tutorialSeen = true; saveSettings(settings); }
+  const needsTutorial = () => !settings.tutorialSeen && !profile.tutorialDone;
 
   // Pause overlay
   const pauseEl = mount('pause', h(`<section class="s-pause ui-modal">
@@ -609,7 +648,7 @@ export function createUI(opts = {}) {
       <h2>Paused</h2>
       <button class="ui-primary" data-p="resume" data-autofocus>Resume</button>
       <button class="ui-secondary" data-p="restart">Restart</button>
-      <button class="ui-secondary" data-p="howto">How to play</button>
+      <button class="ui-secondary" data-p="howto">Controls</button>
       <button class="ui-secondary" data-p="settings">Settings</button>
       <button class="ui-secondary" data-p="quit">Quit to menu</button>
     </div>
@@ -780,7 +819,6 @@ export function createUI(opts = {}) {
   const HOWTO_SEEN = 'roadster.howto.v1';
   const HINT_COUNT = 'roadster.hints.v1';
   function startRace(cfg) {
-    if (!store(HOWTO_SEEN) && cfg.mode !== 'multiplayer' && cfg.mode !== 'tutorial') { go('howto', { data: { pending: cfg } }); return; }
     sfx('click');
     raceVehicle = cfg.vehicleMode || settings.vehicleMode || 'flight';
     hud.setMode(raceVehicle);
@@ -788,7 +826,15 @@ export function createUI(opts = {}) {
     emit('start', { ...cfg, vehicleMode: raceVehicle, car: carPayload(), settings: { ...settings, graphics: resolveGraphics(settings) } });
     enterRace();
   }
-  function startTutorial() { startRace({ mode: 'tutorial', vehicleMode: settings.vehicleMode || 'flight', track: tracks[0]?.id }); }
+  function setVehicle(m) {
+    settings.vehicleMode = m === 'ground' ? 'ground' : 'flight';
+    saveSettings(settings);
+    showroom?.setHover?.(settings.vehicleMode === 'flight');
+    if (current === 'play') renderPlay(); else refreshBindings();
+    emit('vehiclemode', settings.vehicleMode);
+    emit('settings', { ...settings, graphics: resolveGraphics(settings) });
+  }
+  function startTutorial() { markTutorialSeen(); startRace({ mode: 'tutorial', vehicleMode: settings.vehicleMode || 'flight', track: tracks[0]?.id }); }
   let raceVehicle = 'flight';
   function closeOverlays() { screens[current]?.classList.remove('active'); current = null; stack.length = 0; shell.dataset.screen = ''; }
   function enterRace() {
@@ -815,7 +861,7 @@ export function createUI(opts = {}) {
     showroom?.setCar({ paint: settings.car.color, wheels: settings.car.wheels });
     showroom?.start();
     stack.length = 0; current = null;
-    show('main'); refreshBindings();
+    show(needsTutorial() ? 'welcome' : 'main'); refreshBindings();
   }
   function pause() {
     if (!inRace || paused) return;
@@ -883,7 +929,8 @@ export function createUI(opts = {}) {
   // ---------- menu navigation: keyboard + gamepad ----------
   shell.addEventListener('click', (e) => {
     const vm = e.target.closest('[data-vmode]');
-    if (vm) { settings.vehicleMode = vm.dataset.vmode; saveSettings(settings); sfx('click'); refreshBindings(); emit('vehiclemode', settings.vehicleMode); return; }
+    if (vm) { setVehicle(vm.dataset.vmode); sfx('click'); return; }
+    if (e.target.closest('[data-act=help]')) { sfx('click'); go('howto'); return; }
     if (e.target.closest('[data-act=tutorial]')) { startTutorial(); return; }
     const g = e.target.closest('[data-go]'); if (g) { sfx('click'); go(g.dataset.go); return; }
     if (e.target.closest('[data-act=back]')) back();
@@ -960,7 +1007,8 @@ export function createUI(opts = {}) {
 
   // ---------- boot ----------
   showroom?.start();
-  show(opts.skipTitle ? 'main' : 'title');
+  show(opts.skipTitle ? (needsTutorial() ? 'welcome' : 'main') : 'title');
+  showroom?.setHover?.(settings.vehicleMode !== 'ground');
   applyInputMode();
   refreshBindings();
 
@@ -990,6 +1038,7 @@ export function createUI(opts = {}) {
         if ((profile.owned[kind === 'paint' ? 'paints' : 'wheels'] || []).includes(id)) equip(kind, id);
       }
       refreshBindings();
+      if (current === 'welcome' && !needsTutorial()) show('main');
       if (current === 'garage') renderGarage();
       if (current === 'career') renderCareer();
     },
