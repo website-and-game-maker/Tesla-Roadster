@@ -1,0 +1,8 @@
+Web/*
+!Web/.gitkeep
+*.xcodeproj/
+App/Info.plist
+TV/Info.plist
+Watch/Info.plist
+build/
+DerivedData/
