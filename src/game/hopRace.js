@@ -8,11 +8,13 @@
 // in a Ring Trial missing one costs 2 seconds. High enough above the barriers, the car can
 // cut corners - but the tank is small, and falling off the course means a reset.
 import * as THREE from 'three';
+import { Coach } from './coach.js';
 import { Race } from './race.js';
 import { AIDriver } from './ai.js';
 import { collideCars } from '../physics/vehicle.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const AIR_ENV = { grip: 0.55, rolling: 0 };
 const TANK_BURN = 1.4;   // seconds of full burn per tank
 const TANK_FILL = 2.6;   // seconds on the road to refill from empty
 const RING_FUEL = 0.45;  // tank refill per ring
@@ -69,6 +71,14 @@ export class HopRace extends Race {
     this.buildRings();
     g.ui.hud.setMode && g.ui.hud.setMode('flight');
     if (this.kind === 'tutorial') this.showTutorial();
+    this.coach = !this.online && !g.profile.coached && this.kind !== 'tutorial' ? new Coach(this, 'hop') : null;
+  }
+
+  /** Metres along the road to the player's next ring. */
+  ringAhead() {
+    if (!this.rings.length) return Infinity;
+    const L = this.track.length, r = this.rings[this.nextRingIndex(this.player.info.dist)];
+    return (r.dist - this.player.info.dist + L) % L;
   }
 
   groundUnder(c) {
@@ -82,7 +92,7 @@ export class HopRace extends Race {
     if (Array.isArray(w.hopRings) && w.hopRings.length) {
       for (const r of w.hopRings) {
         const info = tr.locate(r.position.x, r.position.z, r.u != null ? Math.round(r.u * tr.n) % tr.n : -1, {});
-        rings.push({ dist: info.dist, lat: info.lat, position: r.position.clone(), tx: info.tx, tz: info.tz, radius: r.radius || 5 });
+        rings.push({ dist: info.dist, lat: info.lat, position: r.position.clone(), tx: info.tx, tz: info.tz, radius: Math.max(r.radius || 6, 6) });
       }
     } else {
       // above straighter stretches, every ~300 m, 4.5-10 m over the road
@@ -103,7 +113,7 @@ export class HopRace extends Race {
         const lat = (rnd() - 0.5) * tr.roadHalf * 0.6;
         const p = tr.pointAt(d, lat, {});
         const h = 4.5 + rnd() * 5.5;
-        rings.push({ dist: d, lat, position: new THREE.Vector3(p.x, p.y + h, p.z), tx: Math.sin(p.yaw), tz: Math.cos(p.yaw), radius: 5 });
+        rings.push({ dist: d, lat, position: new THREE.Vector3(p.x, p.y + h, p.z), tx: Math.sin(p.yaw), tz: Math.cos(p.yaw), radius: 6 });
       }
     }
     rings.sort((a, b) => a.dist - b.dist);
@@ -136,6 +146,17 @@ export class HopRace extends Race {
       r.mesh = m; r.disc = d; r.beam = beam;
       this.scene.add(m, beam);
     }
+    // "JET" chevrons painted on the road where you should fire for the next ring
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 512;
+    const x = cv.getContext('2d');
+    x.strokeStyle = '#35e8ff'; x.lineWidth = 26; x.lineJoin = 'miter';
+    for (let k = 0; k < 3; k++) { const y0 = 150 + k * 120; x.globalAlpha = 1 - k * 0.25; x.beginPath(); x.moveTo(36, y0); x.lineTo(128, y0 - 80); x.lineTo(220, y0); x.stroke(); }
+    x.globalAlpha = 1; x.fillStyle = '#eaffff'; x.font = '900 86px system-ui, sans-serif'; x.textAlign = 'center'; x.fillText('JET', 128, 492);
+    const mt = new THREE.CanvasTexture(cv); mt.anisotropy = 4;
+    this.jetMarkMat = new THREE.MeshBasicMaterial({ map: mt, transparent: true, depthWrite: false, opacity: 0.9, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+    const mg = new THREE.PlaneGeometry(5, 10); mg.rotateX(-Math.PI / 2); mg.rotateY(Math.PI); // lies flat, chevrons point along +z
+    this.jetMark = new THREE.Mesh(mg, this.jetMarkMat); this.jetMark.renderOrder = 2; this.jetMark.visible = false;
+    this.scene.add(this.jetMark);
     this.player.hits = 0;
     this.updateRingVisuals();
   }
@@ -154,6 +175,15 @@ export class HopRace extends Race {
       r.mesh.material = isNext ? this.ringMats.next : (p.ringDone && p.ringDone.has(i) ? this.ringMats.done : this.ringMats.idle);
       r.disc.visible = isNext;
     });
+    if (this.jetMark && next !== this.nextRing) {
+      const r = this.rings[next];
+      // far enough back to climb to the ring at racing speed
+      const d = r.dist - (42 + (r.position.y - this.track.pointAt(r.dist, 0, {}).y) * 2.2);
+      const m = this.track.pointAt(d, r.lat, {});
+      this.jetMark.visible = !this.gapAt(d);
+      this.jetMark.position.set(m.x, (this.groundAt ? this.groundAt(m.x, m.z) : m.y) + 0.05, m.z);
+      this.jetMark.rotation.y = m.yaw;
+    }
     this.nextRing = next;
     void n;
   }
@@ -169,7 +199,7 @@ export class HopRace extends Race {
       if (off > moved) continue;
       const v = c.v;
       const dx = v.x - r.position.x, dy = (v.y + 0.6) - r.position.y, dz = v.z - r.position.z;
-      const hit = Math.hypot(dx, dy, dz) <= r.radius * 1.15;
+      const hit = Math.hypot(dx, dy, dz) <= r.radius * 1.25; // forgiving: clipping the rim counts
       if (hit) {
         c.jet.fuel = Math.min(1, c.jet.fuel + RING_FUEL);
         v.boost = Math.min(v.stats.boostCap, v.boost + 0.12);
@@ -180,6 +210,7 @@ export class HopRace extends Race {
 
   playerRing(i, hit) {
     const p = this.player, g = this.game;
+    if (this.coach) this.coach.event('ring', hit);
     p.ringDone = p.ringDone || new Set();
     if (hit) {
       p.ringDone.add(i); p.hits++;
@@ -191,7 +222,8 @@ export class HopRace extends Race {
       this.vibrate(25);
     } else {
       p.combo = 0;
-      if (this.kind === 'ringtrial' && this.state === 'race') { this.penalty += 2; this.raceTime += 2; this.flash('MISSED +2s'); g.audio.ui('back'); }
+      if (this.kind === 'ringtrial' && this.state === 'race') { this.penalty += 2; this.raceTime += 2; this.flash('MISSED +2s · KEEP GOING'); g.audio.ui('back'); }
+      else if (this.state === 'race') this.flash('MISSED · NEXT RING AHEAD'); // never a reason to turn back
     }
   }
 
@@ -226,12 +258,8 @@ export class HopRace extends Race {
         ? { steer: ci.steer, throttle: 0, brake: 0, handbrake: false, boost: false }
         : { steer: ci.steer, throttle: ci.throttle, brake: ci.brake, handbrake: false, boost: ci.boost };
       let env;
-      if (J.air) env = { grip: 0.55, rolling: 0 }; // a little air control from the thrusters
-      else {
-        const surf = this.world.getSurface ? this.world.getSurface(v.x, v.z) : null;
-        env = surf || { grip: Math.abs(c.info.lat) <= tr.roadHalf + 0.8 ? 1 : 0.72, rolling: Math.abs(c.info.lat) <= tr.roadHalf + 0.8 ? 0 : 1 };
-        v.surface = (surf && surf.type) || 'asphalt';
-      }
+      if (J.air) { env = AIR_ENV; c.offRoad = false; } // a little air control from the thrusters
+      else env = this.surfaceEnv(c);
       v.step(dt, drive, env);
       tr.locate(v.x, v.z, J.air ? -1 : c.info.i, c.info);
       this.jetStep(c, racing && jet, dt);
@@ -370,7 +398,7 @@ export class HopRace extends Race {
     super.finishCar(c);
     if (c.isPlayer && this.kind === 'tutorial') {
       this.message = 'NICE FLYING!';
-      this.game.profile.tutorialDone = true; this.game.save();
+      this.game.profile.tutorialDone = true; this.game.profile.coached = true; this.game.save();
       const t = this.game.ui.tutorial; t && t.complete && t.complete();
     }
   }

@@ -100,7 +100,7 @@ export function createUI(opts = {}) {
   const getSettings = () => settings;
   const input = createInput(getSettings);
   const hud = createHUD(shell, getSettings);
-  const touchCtl = createTouchControls(shell, input, getSettings, () => pause(), () => toggleTilt());
+  const touchCtl = createTouchControls(shell, input, getSettings, () => pause(), () => toggleTilt(), () => emit('respawn'));
 
   // Tilt steering: one switch, used by the How to drive card, the in-race pill and Settings.
   async function toggleTilt(force) {
@@ -829,6 +829,7 @@ export function createUI(opts = {}) {
   function startRace(cfg) {
     sfx('click');
     raceVehicle = cfg.vehicleMode || settings.vehicleMode || 'flight';
+    raceMode = cfg.mode;
     hud.setMode(raceVehicle);
     touchCtl.setThrust(0);
     emit('start', { ...cfg, vehicleMode: raceVehicle, car: carPayload(), settings: { ...settings, graphics: resolveGraphics(settings) } });
@@ -843,7 +844,7 @@ export function createUI(opts = {}) {
     emit('settings', { ...settings, graphics: resolveGraphics(settings) });
   }
   function startTutorial() { markTutorialSeen(); startRace({ mode: 'tutorial', vehicleMode: settings.vehicleMode || 'flight', track: tracks[0]?.id }); }
-  let raceVehicle = 'flight';
+  let raceVehicle = 'flight', raceMode = '';
   function closeOverlays() { screens[current]?.classList.remove('active'); current = null; stack.length = 0; shell.dataset.screen = ''; }
   function enterRace() {
     closeOverlays(); inRace = true; paused = false;
@@ -855,6 +856,8 @@ export function createUI(opts = {}) {
   // A one-line reminder of the controls for this device at the start of the first few races.
   function showRaceHint() {
     const n = +(store(HINT_COUNT) || 0);
+    // A new player's first race coaches itself with step-by-step cards, so the one-line toast would just be noise.
+    if (raceMode === 'tutorial' || (!profile.coached && raceMode !== 'multiplayer')) return;
     if (n >= 3 || !inRace) return;
     store(HINT_COUNT, String(n + 1));
     const d = device();

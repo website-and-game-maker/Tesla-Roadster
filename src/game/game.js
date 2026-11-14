@@ -129,7 +129,9 @@ export class Game {
     ui.on('tutorial', (t) => {
       if (t && (t.action === 'skip' || t.action === 'complete')) { this.profile.tutorialDone = true; this.save(); }
       if (t && t.action === 'skip' && this.race && this.lastCfg && this.lastCfg.mode === 'tutorial') this.race.skipTutorial && this.race.skipTutorial();
+      if (t && t.action === 'skip' && this.race && this.race.coach) this.race.coach.stop(true);
     });
+    ui.on('respawn', () => { if (this.race && this.state === 'race') this.race.recover(); });
     ui.on('screen', (s) => { this.showroomView = s === 'garage' ? 'garage' : 'menu'; });
     if (ui.input && this.input.setExternal) {
       this.input.setExternal(() => (typeof ui.input.read === 'function' ? ui.input.read(1 / 60) : ui.input));
