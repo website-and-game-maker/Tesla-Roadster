@@ -6,7 +6,7 @@ import { canTilt } from './device.js';
 // setPointerCapture can throw (e.g. pointer already released); capture is best-effort.
 const capture = (el, id) => { try { el.setPointerCapture(id); } catch { /* ignore */ } };
 
-export function createTouchControls(root, input, getSettings, onPause, onTiltToggle) {
+export function createTouchControls(root, input, getSettings, onPause, onTiltToggle, onReset) {
   const el = document.createElement('div');
   el.className = 'ui-touch';
   el.innerHTML = `
@@ -21,7 +21,8 @@ export function createTouchControls(root, input, getSettings, onPause, onTiltTog
       <button class="t-pedal t-brake" data-btn="brake" aria-label="Brake"><span>BRAKE</span></button>
       <button class="t-pedal t-gas" data-btn="throttle" aria-label="Accelerate"><span>GO</span></button>
     </div>
-    <button class="t-pause" aria-label="Pause">❚❚</button>`;
+    <button class="t-pause" aria-label="Pause">❚❚</button>
+    <button class="t-reset" aria-label="Back onto the road">↺</button>`;
   root.appendChild(el);
 
   const ts = input.touchState;
@@ -83,6 +84,7 @@ export function createTouchControls(root, input, getSettings, onPause, onTiltTog
     b.addEventListener('contextmenu', (e) => e.preventDefault());
   }
   el.querySelector('.t-pause').addEventListener('click', () => onPause());
+  el.querySelector('.t-reset').addEventListener('click', () => { input.vibrate(15); onReset && onReset(); });
 
   // Tilt steering (landscape). iOS requires a permission prompt from a user gesture.
   let tiltOn = false;

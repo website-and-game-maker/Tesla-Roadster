@@ -4,6 +4,7 @@ import { Vehicle, carStats, collideCars } from '../physics/vehicle.js';
 import { TrackSampler } from './trackSampler.js';
 import { AIDriver } from './ai.js';
 import { SkidMarks, Smoke } from './effects.js';
+import { Coach } from './coach.js';
 
 const STEP = 1 / 120;
 const AI_NAMES = ['Nova', 'Volta', 'Kestrel', 'Ampère', 'Cobalt', 'Quill', 'Zephyr', 'Halo', 'Rook', 'Tesla-Coil', 'Ion', 'Faraday'];
@@ -88,6 +89,12 @@ export class Race {
     // effects
     this.skids = new SkidMarks(this.scene, Math.round(1200 * q.particles) + 200);
     this.smoke = new Smoke(this.scene, Math.round(300 * q.particles) + 40, this.world.def && this.world.def.scenery === 'desert' ? 0xd8b48a : 0xe6e6e6);
+    // what the run-off is made of: drives the dust colour and the tyre sound off the road
+    const OFFROAD = { alpine: ['snow', 0xf2f6fa], coast: ['grass', 0x9a8a5e], city: ['dirt', 0x8f8a82], launch: ['dirt', 0xa09684], saltflats: ['sand', 0xe9e2d2],
+      mars: ['sand', 0xc87f55], moon: ['dirt', 0xb9b9b9], canyon: ['sand', 0xc98f5e], isles: ['grass', 0x9fb07a], spires: ['dirt', 0x8a8f99] };
+    [this.offSurface, this.dustColor] = OFFROAD[this.cfg.worldId] || ['dirt', 0xa89878];
+    this.dust = new Smoke(this.scene, Math.round(260 * q.particles) + 40, this.dustColor);
+    this.offT = 0;
 
     // ghost (time trial)
     this.ghostRec = [];
@@ -115,6 +122,8 @@ export class Race {
     this.mapPts = pts;
     g.ui.hud.setTrack && g.ui.hud.setTrack(pts, this.track.bounds);
     g.ui.hud.setMode && g.ui.hud.setMode('ground');
+    // a new player's first race teaches itself, whatever mode they picked
+    if (!this.online && !g.profile.coached && this.cfg.mode !== 'tutorial') this.coach = new Coach(this, 'ground');
 
     this.camera.far = q.drawDist * 1.6;
     if (this.scene.fog) { this.scene.fog.far = Math.min(this.scene.fog.far || q.drawDist, q.drawDist); this.scene.fog.near = Math.min(this.scene.fog.near, q.drawDist * 0.2); }
@@ -194,9 +203,7 @@ export class Race {
         ci = c.ai.update(dt, c.info, this.cars.filter((o) => !o.out).map((o) => o.v));
         if (c.ai.stuck > 3) { this.resetCar(c); c.ai.stuck = 0; }
       }
-      const surf = this.world.surfaceAt ? this.world.surfaceAt(c.info.lat) : (this.world.getSurface ? this.world.getSurface(v.x, v.z) : null);
-      v.surface = (surf && surf.name) || (Math.abs(c.info.lat) <= tr.roadHalf ? 'asphalt' : 'grass');
-      v.step(dt, ci, surf || { grip: Math.abs(c.info.lat) <= tr.roadHalf + 0.8 ? 1 : 0.72, rolling: Math.abs(c.info.lat) <= tr.roadHalf + 0.8 ? 0 : 1 });
+      v.step(dt, ci, this.surfaceEnv(c));
       tr.locate(v.x, v.z, c.info.i, c.info);
       const lim = tr.wallHalf - 1.0;
       if (Math.abs(c.info.lat) > lim) {
@@ -331,6 +338,42 @@ export class Race {
     this.track.locate(p.x, p.z, c.info.i, c.info);
   }
 
+  /**
+   * Grip and drag under a car. The road is fast; the run-off (grass, gravel, sand, snow,
+   * regolith) has less grip and drags hard, so cutting a corner costs speed: flat out you
+   * settle at roughly 110 km/h there instead of 260.
+   */
+  surfaceEnv(c) {
+    const v = c.v, tr = this.track, a = Math.abs(c.info.lat);
+    const surf = this.world.getSurface ? this.world.getSurface(v.x, v.z) : null;
+    const type = surf ? surf.type : (a <= tr.roadHalf ? 'road' : a <= tr.roadHalf + 0.8 ? 'kerb' : 'shoulder');
+    c.offRoad = type === 'shoulder';
+    v.surface = c.offRoad ? this.offSurface : 'asphalt';
+    const env = this._env || (this._env = { grip: 1, rolling: 0 });
+    if (type === 'road') { env.grip = surf ? surf.grip : 1; env.rolling = 0; }
+    else if (type === 'kerb') { env.grip = surf ? surf.grip : 0.93; env.rolling = 0.12; }
+    else {
+      // worlds give a real rolling-resistance number (0.05 on grass, more on Mars); scale it to the car model
+      env.grip = Math.min(surf ? surf.grip : 0.68, 0.68);
+      env.rolling = 1.6 * (surf && surf.rolling ? surf.rolling / 0.05 : 1);
+    }
+    return env;
+  }
+
+  /** Put the player back on the road, facing the right way (R, the ↺ button, or automatically). */
+  recover(msg = 'BACK ON THE ROAD') {
+    if (this.state !== 'race' || this.player.finished) return;
+    this.resetCar(this.player);
+    this.player.wrongT = 0; this.lostT = 0;
+    this.flash(msg);
+  }
+
+  /** Sharp corner coming up at this speed? (used by the first-race coach) */
+  cornerAhead() {
+    const p = this.player;
+    return p.v.speed > 25 && Math.abs(this.track.curvatureAt(p.info.dist + 30 + p.v.speed)) > 0.012;
+  }
+
   flash(text) { this.note = text; this.noteT = 2.2; }
   vibrate(ms) { if (this.game.profile.settings.vibration && navigator.vibrate && this.game.input.lastDevice === 'touch') navigator.vibrate(ms); }
 
@@ -338,11 +381,23 @@ export class Race {
     const g = this.game;
     if (this.noteT > 0) { this.noteT -= dt; if (this.noteT <= 0) this.note = ''; }
     if (g.input.wasPressed('KeyC', 'PadKeyC')) { this.camMode = (this.camMode + 1) % 3; g.profile.settings.camera = this.camMode; g.save(); }
-    if (g.input.wasPressed('KeyR', 'PadKeyR') && this.state === 'race') this.resetCar(this.player);
+    if (g.input.wasPressed('KeyR', 'PadKeyR')) this.recover();
 
-    // wrong way
+    // wrong way: warn first, then turn the car around for you
     const pv = this.player.v, pi = this.player.info;
-    if (pv.vx * pi.tx + pv.vz * pi.tz < -4) this.player.wrongT += dt; else this.player.wrongT = 0;
+    const along = pv.vx * pi.tx + pv.vz * pi.tz;
+    const facing = Math.sin(pv.yaw) * pi.tx + Math.cos(pv.yaw) * pi.tz;
+    if (along < -4) this.player.wrongT += dt; else this.player.wrongT = 0;
+    // lost = pointing backwards and going nowhere useful (spun, wedged on a wall, creeping back for a ring)
+    if (this.state === 'race' && !this.player.finished && facing < -0.25 && along < 6) this.lostT = (this.lostT || 0) + dt; else this.lostT = 0;
+    if (this.player.wrongT > 3.5 || this.lostT > 5) this.recover('TURNED YOU AROUND');
+
+    // off the road: rumble, and say why the car is slow
+    const off = this.player.offRoad && this.player.v.grounded !== false && !(this.player.jet && this.player.jet.air);
+    this.offT = off && pv.speed > 6 ? this.offT + dt : 0;
+    if (off && pv.speed > 12) { this.shake = Math.min(1, Math.max(this.shake, 0.08 + pv.speed * 0.002)); if (Math.random() < dt * 6) this.vibrate(12); }
+
+    if (this.coach) this.coach.update(dt);
 
     // visuals
     const q = g.quality.preset;
@@ -368,9 +423,11 @@ export class Race {
         const wx = v.x - fx * 1.3 + rx * 0.84 * side, wz = v.z - fz * 1.3 + rz * 0.84 * side;
         this.skids.add(c.name + k, wx, v.y + 0.03, wz, rx, rz, v.slip + 0.3, sliding);
         if (sliding && q.particles > 0.3 && Math.random() < q.particles * 0.9) this.smoke.emit(wx, v.y, wz, v.vx, v.vz, 0.4 + v.slip * 0.6);
+        // kicked-up dirt off the road
+        if (c.offRoad && !(c.jet && c.jet.air) && v.speed > 6 && Math.random() < q.particles * Math.min(1, v.speed / 25)) this.dust.emit(wx, v.y, wz, v.vx, v.vz, 0.5 + Math.min(0.5, v.speed / 60));
       }
     }
-    this.smoke.update(dt);
+    this.smoke.update(dt); this.dust.update(dt);
 
     // ghost playback
     if (this.ghost && this.player.crossings >= 1) {
@@ -465,7 +522,7 @@ export class Race {
       extra,
       position, racers,
       boost: v.boost / v.stats.boostCap, boosting: v.boosting, battery: v.boost / v.stats.boostCap,
-      message: this.message, note: this.note,
+      message: this.message, note: this.note || (this.offT > 0.4 ? 'OFF ROAD' : ''),
       driftScore: type === 'drift' || d.score > 0 || d.chain > 0 ? d.score : 0, driftChain: d.chain, driftMult: d.mult,
       wrongWay: p.wrongT > 1.2,
       ghostDelta: this.ghostDelta,
@@ -492,7 +549,7 @@ export class Race {
   dispose() {
     for (const c of this.cars) { this.scene.remove(c.model.object); c.model.dispose && c.model.dispose(); }
     if (this.ghost) { this.ghost.model.dispose && this.ghost.model.dispose(); }
-    this.skids.dispose(); this.smoke.dispose();
+    this.skids.dispose(); this.smoke.dispose(); this.dust.dispose();
     this.world.dispose && this.world.dispose();
     if (this.online) this.online.dispose();
   }
