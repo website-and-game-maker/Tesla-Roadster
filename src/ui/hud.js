@@ -37,6 +37,7 @@ export function createHUD(root, getSettings) {
     <div class="h-rings"><span>NEXT RING</span><b class="h-ring-n">-</b><i>/</i><b class="h-ring-t">-</b></div>
     <div class="h-alt"><span>ALT</span><b class="h-alt-v">0</b><em class="h-alt-u">m</em><i class="h-vs"></i></div>
     <div class="h-arrow"><i></i></div>
+    <div class="h-mark"><i></i><b class="h-mark-d"></b></div>
     <div class="h-drift"><b>0</b><span class="h-dlabel">DRIFT</span></div>
     <div class="h-note"></div>
     <div class="h-msg"></div>
@@ -50,7 +51,7 @@ export function createHUD(root, getSettings) {
   const map = $('.h-map'), mctx = map.getContext('2d');
   const r = { speed: $('.h-speed'), unit: $('.h-unit'), gear: $('.h-gear'), cur: $('.h-cur'), best: $('.h-best'),
     pos: $('.h-pos'), lap: $('.h-lap'), boost: $('.h-boost i'), batt: $('.h-batt i'), drift: $('.h-drift'),
-    msg: $('.h-msg'), wrong: $('.h-wrong'), ghost: $('.h-ghost'), elim: $('.h-elim'), fps: $('.h-fps'), note: $('.h-note'), ringN: $('.h-ring-n'), ringT: $('.h-ring-t'), rings: $('.h-rings'), alt: $('.h-alt-v'), altU: $('.h-alt-u'), vs: $('.h-vs'), arrow: $('.h-arrow'), thrust: $('.h-thrust i'), extra: $('.h-extra'), dlabel: $('.h-dlabel') };
+    msg: $('.h-msg'), wrong: $('.h-wrong'), ghost: $('.h-ghost'), elim: $('.h-elim'), fps: $('.h-fps'), note: $('.h-note'), ringN: $('.h-ring-n'), ringT: $('.h-ring-t'), rings: $('.h-rings'), alt: $('.h-alt-v'), altU: $('.h-alt-u'), vs: $('.h-vs'), arrow: $('.h-arrow'), mark: $('.h-mark'), markD: $('.h-mark-d'), thrust: $('.h-thrust i'), extra: $('.h-extra'), dlabel: $('.h-dlabel') };
 
   let mode = 'ground', lastAlt = null, vsSmooth = 0;
   let lastNote = '', noteTimer = 0, shownSpeed = 0, lastMsg = '', msgTimer = 0, lastDrift = 0, mapBounds = null, mapPts = null;
@@ -178,7 +179,8 @@ export function createHUD(root, getSettings) {
           r.vs.className = 'h-vs ' + (vsSmooth > 1.5 ? 'up' : vsSmooth < -1.5 ? 'down' : '');
         }
         if (d.rings) {
-          const total = d.rings.total ?? 0, next = Math.min(total, (d.rings.hit ?? 0) + 1);
+          // which ring is coming up along the course (a missed ring is behind you, not "next")
+          const total = d.rings.total ?? 0, next = d.rings.next ?? Math.min(total, (d.rings.hit ?? 0) + 1);
           setText(r.ringN, 'ringN', String(next)); setText(r.ringT, 'ringT', String(total));
           r.rings.classList.toggle('all', total > 0 && (d.rings.hit ?? 0) >= total);
         }
@@ -190,6 +192,13 @@ export function createHUD(root, getSettings) {
           r.arrow.style.transform = `translate(${ux * 34}vw, ${uy * 30}vh) rotate(${Math.atan2(uy, ux)}rad)`;
           r.arrow.classList.add('on');
         } else r.arrow.classList.remove('on');
+        // marker floating over the next ring while it is on screen, with the distance to it
+        const mk = d.nextRingMark;
+        if (mk) {
+          r.mark.style.left = `${(mk.x + 1) * 50}%`; r.mark.style.top = `${(1 - mk.y) * 50}%`;
+          setText(r.markD, 'markD', `${mk.dist} m`);
+          r.mark.classList.add('on');
+        } else r.mark.classList.remove('on');
       }
       if (d.ghostDelta != null) {
         const g = d.ghostDelta;
