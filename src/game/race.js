@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Vehicle, carStats, collideCars } from '../physics/vehicle.js';
 import { TrackSampler } from './trackSampler.js';
 import { AIDriver } from './ai.js';
-import { SkidMarks, Smoke } from './effects.js';
+import { SkidMarks, Smoke, Particles, dustFor } from './effects.js';
 import { Coach } from './coach.js';
 
 const STEP = 1 / 120;
@@ -93,7 +93,7 @@ export class Race {
     const OFFROAD = { alpine: ['snow', 0xf2f6fa], coast: ['grass', 0x9a8a5e], city: ['dirt', 0x8f8a82], launch: ['dirt', 0xa09684], saltflats: ['sand', 0xe9e2d2],
       mars: ['sand', 0xc87f55], moon: ['dirt', 0xb9b9b9], canyon: ['sand', 0xc98f5e], isles: ['grass', 0x9fb07a], spires: ['dirt', 0x8a8f99] };
     [this.offSurface, this.dustColor] = OFFROAD[this.cfg.worldId] || ['dirt', 0xa89878];
-    this.dust = new Smoke(this.scene, Math.round(260 * q.particles) + 40, this.dustColor);
+    this.dust = new Particles(this.scene, Math.round(500 * q.particles) + 80); // off-road spray, jet exhaust, landing puffs
     this.offT = 0;
 
     // ghost (time trial)
@@ -348,7 +348,7 @@ export class Race {
     const surf = this.world.getSurface ? this.world.getSurface(v.x, v.z) : null;
     const type = surf ? surf.type : (a <= tr.roadHalf ? 'road' : a <= tr.roadHalf + 0.8 ? 'kerb' : 'shoulder');
     c.offRoad = type === 'shoulder';
-    v.surface = c.offRoad ? this.offSurface : 'asphalt';
+    v.surface = c.offRoad ? this.offSurface : type === 'kerb' ? 'kerb' : 'asphalt'; // kerb only changes the tyre sound (rumble strip)
     const env = this._env || (this._env = { grip: 1, rolling: 0 });
     if (type === 'road') { env.grip = surf ? surf.grip : 1; env.rolling = 0; }
     else if (type === 'kerb') { env.grip = surf ? surf.grip : 0.93; env.rolling = 0.12; }
@@ -423,8 +423,14 @@ export class Race {
         const wx = v.x - fx * 1.3 + rx * 0.84 * side, wz = v.z - fz * 1.3 + rz * 0.84 * side;
         this.skids.add(c.name + k, wx, v.y + 0.03, wz, rx, rz, v.slip + 0.3, sliding);
         if (sliding && q.particles > 0.3 && Math.random() < q.particles * 0.9) this.smoke.emit(wx, v.y, wz, v.vx, v.vz, 0.4 + v.slip * 0.6);
-        // kicked-up dirt off the road
-        if (c.offRoad && !(c.jet && c.jet.air) && v.speed > 6 && Math.random() < q.particles * Math.min(1, v.speed / 25)) this.dust.emit(wx, v.y, wz, v.vx, v.vz, 0.5 + Math.min(0.5, v.speed / 60));
+        // off-road: the wheels throw up a low dust cloud and heavier bits (stones, turf, snow) in the world's colour
+        const dust = c.offRoad && !(c.jet && c.jet.air) && v.speed > 6 && dustFor(v.surface, this.world);
+        if (dust && Math.random() < q.particles * dust.amount * Math.min(1, v.speed / 25) * (1 + v.slip)) {
+          const back = 0.25 + Math.random() * 0.2, heavy = Math.random() < 0.35;
+          this.dust.emit(wx, v.y + 0.15, wz, v.vx * back + (Math.random() - 0.5) * 2, heavy ? 2 + Math.random() * 3 : 0.6 + Math.random(), v.vz * back + (Math.random() - 0.5) * 2, heavy
+            ? { color: dust.color, size: 0.18 + Math.random() * 0.15, life: 0.5 + Math.random() * 0.4, gravity: 4 + dust.heavy * 8, grow: 0.3 }
+            : { color: this.dustColor ?? dust.color, size: 0.8 + Math.random() * 0.6, life: 0.9 + Math.random() * 0.7, gravity: -0.3, grow: 3 });
+        }
       }
     }
     this.smoke.update(dt); this.dust.update(dt);
@@ -451,7 +457,7 @@ export class Race {
     if (this.ownSun) { const p = this.player.model.object.position; this.ownSun.position.set(p.x + 60, p.y + 120, p.z + 40); this.ownSun.target.position.copy(p); }
 
     // audio
-    g.audio.update({ speed: pv.speed, throttle: pv.throttle, brake: pv.brake, slip: pv.drifting ? 1 : pv.slip, surface: pv.surface, boost: pv.boosting }, dt);
+    g.audio.update({ speed: pv.speed, throttle: pv.throttle, brake: pv.brake, slip: pv.drifting ? 1 : pv.slip, surface: pv.surface, boost: pv.boosting && !pv.jetFiring, airborne: !!pv.airborne }, dt);
     g.audio.music && g.audio.music.setIntensity && g.audio.music.setIntensity(clamp(pv.speed / 70, 0, 1));
 
     // end of race flow

@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { Coach } from './coach.js';
 import { Race } from './race.js';
 import { AIDriver } from './ai.js';
+import { dustFor } from './effects.js';
 import { collideCars } from '../physics/vehicle.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -297,7 +298,8 @@ export class HopRace extends Race {
       J.fuel = Math.max(0, J.fuel - dt / TANK_BURN);
       if (!J.air) {
         J.air = true; J.airT = 0; v.y = gr + 0.05; J.vy = Math.max(J.vy, 2.5);
-        if (c.isPlayer) { this.tut.hops++; this.game.audio.ui('transform'); }
+        if (c.isPlayer) this.tut.hops++;
+        this.groundBlast(c, 0.6);
       }
       J.vy += this.jetUp * dt;
       // the rear thrusters also push forward a little
@@ -312,8 +314,11 @@ export class HopRace extends Race {
       if (v.y <= gr) {
         const impact = -J.vy;
         v.y = gr; J.vy = 0; J.air = false;
+        this.surfaceEnv(c); // what we landed on (sets v.surface, c.offRoad)
+        if (impact > 4) this.groundBlast(c, Math.min(1, impact / 20));
         if (c.isPlayer) {
           this.tut.landings++;
+          this.game.audio.land && this.game.audio.land(impact, v.surface);
           if (impact > 22) { v.vx *= 0.55; v.vz *= 0.55; this.shake = 1; this.flash('HARD LANDING'); this.game.audio.collision(impact); this.vibrate(90); }
           else if (impact > 7) { this.shake = Math.min(1, this.shake + impact * 0.03); this.vibrate(30); }
         } else if (impact > 22) { v.vx *= 0.55; v.vz *= 0.55; }
@@ -325,6 +330,20 @@ export class HopRace extends Race {
       J.fuel = Math.min(1, J.fuel + dt / TANK_FILL);
     }
     v.vy = J.vy;
+    v.airborne = J.air; v.jetFiring = J.firing; // read by Race's audio and tyre effects
+  }
+
+  /** A ring of dust (or road grit) kicked out from under the car: take-offs and landings. */
+  groundBlast(c, strength) {
+    const q = (this.game.quality && this.game.quality.preset) || {}, d = this.dust;
+    if (!d || (q.particles ?? 1) < 0.3) return;
+    const v = c.v, dust = c.offRoad && dustFor(v.surface, this.world);
+    const color = dust ? (this.dustColor ?? dust.color) : 0xc9c6c0, n = Math.round((6 + 14 * strength) * (q.particles ?? 1));
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 3 + Math.random() * 6 * strength;
+      d.emit(v.x + Math.sin(a) * 1.2, v.y + 0.2, v.z + Math.cos(a) * 1.2, Math.sin(a) * sp + v.vx * 0.3, 0.6 + Math.random() * 1.5, Math.cos(a) * sp + v.vz * 0.3,
+        { color, size: 0.6 + Math.random() * 0.6, life: 0.7 + Math.random() * 0.6, gravity: 1.5, grow: 3 });
+    }
   }
 
   /** AI: line up under the next ring once it is close (lower skill = looser line). */
@@ -428,6 +447,20 @@ export class HopRace extends Race {
     }
     if (p.comboT > 0) p.comboT -= dt;
     super.postUpdate(dt, inp);
+    // jets: the burn and its cues (ignite, low, empty, refill, full) come from the audio engine
+    const PJ = p.jet;
+    if (PJ && g.audio.updateJet) {
+      g.audio.updateJet({ firing: PJ.firing, fuel: PJ.fuel, wanted: this.state === 'race' && !this.autopilot && !!(inp && inp.handbrake), airborne: PJ.air, speed: p.v.speed }, dt);
+    }
+    // exhaust: hot grey smoke streaming back from the thrusters while they burn
+    const qp = (g.quality && g.quality.preset && g.quality.preset.particles) ?? 1;
+    if (this.dust && qp >= 0.3) for (const c of this.cars) {
+      if (c.out || !c.jet || !c.jet.firing || Math.random() > qp * 0.9) continue;
+      const v = c.v, fx = Math.sin(v.yaw), fz = Math.cos(v.yaw), s = Math.random() < 0.5 ? 1 : -1;
+      const x = v.x - fx * 2.1 - fz * 0.5 * s, z = v.z - fz * 2.1 + fx * 0.5 * s;
+      this.dust.emit(x, v.y + 0.55, z, v.vx * 0.4 - fx * 6 + (Math.random() - 0.5), -2 - Math.random() * 2, v.vz * 0.4 - fz * 6 + (Math.random() - 0.5),
+        { color: Math.random() < 0.3 ? 0x9fc6ff : 0x8c8c90, size: 0.45 + Math.random() * 0.3, life: 0.5 + Math.random() * 0.4, gravity: -1.5, grow: 4 });
+    }
     for (const c of this.cars) {
       if (c.out || !c.jet) continue;
       const J = c.jet, v = c.v, o = c.model.object, m = c.model;
