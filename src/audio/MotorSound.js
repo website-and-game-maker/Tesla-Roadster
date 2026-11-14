@@ -6,14 +6,27 @@ import { clamp, smoothstep, noiseSource, biquad, gain, glide } from './util.js';
 
 // How each surface changes rolling noise and skids.
 // rollHz: filter centre, roll: loudness, squeal: tire squeal amount,
-// grit: loose-material crunch, skidHz: centre of the skid noise.
-const SURFACES = {
-  asphalt: { rollHz: 320, roll: 0.55, squeal: 1.0, grit: 0.0, skidHz: 1900 },
-  dirt:    { rollHz: 900, roll: 1.0, squeal: 0.1, grit: 0.9, skidHz: 900 },
-  grass:   { rollHz: 600, roll: 0.75, squeal: 0.0, grit: 0.5, skidHz: 700 },
-  snow:    { rollHz: 450, roll: 0.6, squeal: 0.0, grit: 0.6, skidHz: 1300 },
-  sand:    { rollHz: 1200, roll: 0.9, squeal: 0.0, grit: 1.0, skidHz: 1100 },
+// grit: loose-material crunch, gritHz: crunch brightness, skidHz: centre of
+// the skid noise, rumble: low body shake through the suspension,
+// bumpM: spacing of the bumps in metres (the shake's rate is speed / bumpM).
+export const SURFACES = {
+  asphalt: { rollHz: 320, roll: 0.55, squeal: 1.0, grit: 0.0, gritHz: 2500, skidHz: 1900, rumble: 0.0, bumpM: 3 },
+  kerb:    { rollHz: 380, roll: 0.7, squeal: 0.8, grit: 0.0, gritHz: 2500, skidHz: 1700, rumble: 1.0, bumpM: 0.9 },
+  dirt:    { rollHz: 900, roll: 1.0, squeal: 0.1, grit: 0.6, gritHz: 1800, skidHz: 900, rumble: 0.45, bumpM: 1.6 },
+  gravel:  { rollHz: 1300, roll: 1.0, squeal: 0.0, grit: 1.0, gritHz: 3200, skidHz: 1500, rumble: 0.55, bumpM: 0.7 },
+  grass:   { rollHz: 600, roll: 0.75, squeal: 0.0, grit: 0.35, gritHz: 1400, skidHz: 700, rumble: 0.35, bumpM: 2.2 },
+  mud:     { rollHz: 380, roll: 0.9, squeal: 0.0, grit: 0.25, gritHz: 700, skidHz: 500, rumble: 0.5, bumpM: 2.5 },
+  snow:    { rollHz: 450, roll: 0.6, squeal: 0.0, grit: 0.6, gritHz: 2000, skidHz: 1300, rumble: 0.2, bumpM: 2 },
+  sand:    { rollHz: 1200, roll: 0.9, squeal: 0.0, grit: 1.0, gritHz: 4200, skidHz: 1100, rumble: 0.3, bumpM: 2.8 },
+  ice:     { rollHz: 260, roll: 0.35, squeal: 0.0, grit: 0.0, gritHz: 2500, skidHz: 2600, rumble: 0.05, bumpM: 4 },
 };
+// Names the worlds or physics may use, mapped onto the table above.
+const ALIASES = { road: 'asphalt', tarmac: 'asphalt', concrete: 'asphalt', track: 'asphalt', curb: 'kerb', rumble: 'kerb', shoulder: 'dirt', runoff: 'dirt', offroad: 'dirt', earth: 'dirt', rock: 'gravel', stone: 'gravel', lawn: 'grass', turf: 'grass', beach: 'sand', desert: 'sand', regolith: 'sand' };
+/** Turn any surface name into one of the SURFACES keys. */
+export function surfaceKey(name) {
+  const n = String(name || 'asphalt').toLowerCase();
+  return SURFACES[n] ? n : (ALIASES[n] || 'asphalt');
+}
 
 // Motor "orders": the whine is a stack of tones at multiples of motor speed.
 // mul = multiple of the base frequency, g = loudness, regen = extra loudness
@@ -99,6 +112,21 @@ export class MotorSound {
       chop.start();
       this.chop = chop;
       this.sources.push(gritSrc, chop);
+
+      // Body rumble: low noise shaken at the rate the tires hit bumps
+      // (kerb stripes, ruts, stones), so a rumble strip goes brrrrt.
+      const rumbleSrc = noiseSource(ctx, noise);
+      this.rumbleFilter = biquad(ctx, 'lowpass', 140, 1.1);
+      this.rumbleAm = gain(ctx, 0.5);
+      this.bump = ctx.createOscillator();
+      this.bump.type = 'triangle';
+      this.bump.frequency.value = 10;
+      this.bumpDepth = gain(ctx, 0.5);
+      this.bump.connect(this.bumpDepth).connect(this.rumbleAm.gain);
+      this.rumbleGain = gain(ctx);
+      rumbleSrc.connect(this.rumbleFilter).connect(this.rumbleAm).connect(this.rumbleGain).connect(this.out);
+      this.bump.start();
+      this.sources.push(rumbleSrc, this.bump);
     }
 
     // --- Skid: squeal tone + scrubbing noise --------------------------------
@@ -169,12 +197,13 @@ export class MotorSound {
       });
     }
 
-    this.state = { speed: 0, throttle: 0, brake: 0, slip: 0, surface: 'asphalt', boost: false };
+    this.state = { speed: 0, throttle: 0, brake: 0, slip: 0, surface: 'asphalt', boost: false, airborne: false };
   }
 
   /**
    * @param {{speed?:number, throttle?:number, brake?:number, slip?:number,
-   *          surface?:string, boost?:boolean, gear?:number}} s
+   *          surface?:string, boost?:boolean, airborne?:boolean}} s
+   *   airborne: wheels off the ground, so tire roll, crunch and skids go quiet
    */
   update(s = {}) {
     const ctx = this.ctx;
@@ -182,8 +211,9 @@ export class MotorSound {
     const v = Math.abs(st.speed || 0); // m/s
     const throttle = clamp(st.throttle || 0);
     const brake = clamp(st.brake || 0);
-    const surf = SURFACES[st.surface] || SURFACES.asphalt;
+    const surf = SURFACES[surfaceKey(st.surface)];
     const tc = 0.04;
+    const ground = st.airborne ? 0 : 1; // tires only make noise when touching something
 
     // Motor speed: single-speed gearbox, so pitch tracks road speed directly.
     // ~35 Hz at a crawl, ~1 kHz near top speed (~110 m/s).
@@ -206,16 +236,23 @@ export class MotorSound {
     }
 
     // Tire roll grows with speed and depends on the surface.
-    const roll = smoothstep(0, 35, v) * surf.roll;
+    const roll = smoothstep(0, 35, v) * surf.roll * ground;
     glide(this.rollFilter.frequency, surf.rollHz + v * 9, ctx, 0.1);
     glide(this.rollGain.gain, roll * 0.22, ctx, 0.08);
     if (this.gritGain) {
-      glide(this.gritGain.gain, smoothstep(0.5, 25, v) * surf.grit * 0.16, ctx, 0.08);
+      glide(this.gritGain.gain, smoothstep(0.5, 25, v) * surf.grit * 0.16 * ground, ctx, 0.08);
+      glide(this.gritFilter.frequency, surf.gritHz + v * 12, ctx, 0.1);
       glide(this.chop.frequency, 12 + v * 1.4, ctx, 0.1);
+    }
+    if (this.rumbleGain) {
+      // Bumps per second = speed / spacing; capped so it stays a rumble, not a tone.
+      glide(this.bump.frequency, clamp(v / surf.bumpM, 2, 70), ctx, 0.05);
+      glide(this.rumbleFilter.frequency, 90 + v * 1.5, ctx, 0.1);
+      glide(this.rumbleGain.gain, smoothstep(1, 18, v) * surf.rumble * 0.5 * ground, ctx, 0.05);
     }
 
     // Skids: slip 0..1 is how hard the tires are sliding.
-    const skid = smoothstep(0.12, 0.75, st.slip || 0) * smoothstep(1, 6, v);
+    const skid = smoothstep(0.12, 0.75, st.slip || 0) * smoothstep(1, 6, v) * ground;
     glide(this.squealGain.gain, skid * surf.squeal * 0.18, ctx, 0.03);
     glide(this.squeal.frequency, 760 + v * 2.5 + (st.slip || 0) * 180, ctx, 0.05);
     glide(this.skidNoiseGain.gain, skid * (0.12 + surf.grit * 0.35), ctx, 0.03);

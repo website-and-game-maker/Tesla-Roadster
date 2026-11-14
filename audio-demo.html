@@ -36,7 +36,7 @@
     <label class="row">Brake <input id="brake" type="range" min="0" max="1" step="0.01" value="0"><span id="brakeV">0</span></label>
     <label class="row">Tire slip <input id="slip" type="range" min="0" max="1" step="0.01" value="0"><span id="slipV">0</span></label>
     <label class="row">Surface
-      <select id="surface"><option>asphalt</option><option>dirt</option><option>grass</option><option>snow</option><option>sand</option></select><span></span>
+      <select id="surface"><option>asphalt</option><option>kerb</option><option>dirt</option><option>gravel</option><option>grass</option><option>mud</option><option>snow</option><option>sand</option><option>ice</option></select><span></span>
     </label>
     <label><input id="boost" type="checkbox"> Boost thrusters</label>
   </section>
@@ -65,6 +65,9 @@
     <label><input id="afterburner" type="checkbox"> Afterburner</label>
     <div><button id="ring">Ring (combo <span id="comboV">1</span>)</button><button id="resetCombo">Reset combo</button>
     <button data-fx="nearMiss">Near miss</button><button data-fx="transform">Transform</button><button data-fx="stall">Stall</button></div>
+    <h2 style="margin-top:16px">Jet hops</h2>
+    <div><button id="jet">Hold to fire jets</button> Tank <span id="fuelV">100</span>%</div>
+    <div><button data-land="4">Soft landing</button><button data-land="12">Firm landing</button><button data-land="24">Hard landing</button><button id="ringFuel">Ring refill</button></div>
   </section>
 </div>
 <script type="module">
@@ -72,6 +75,22 @@ import { AudioEngine, mountAudioSettings } from './src/audio/AudioEngine.js';
 const audio = new AudioEngine();
 window.audio = audio;
 const $ = (id) => document.getElementById(id);
+// jet hop tank: 1.4 s of burn, refills in ~3 s on the ground
+const jet = { held: false, fuel: 1 };
+const holdJet = (on) => () => { audio.unlock(); jet.held = on; };
+$('jet').addEventListener('pointerdown', holdJet(true));
+for (const ev of ['pointerup', 'pointerleave']) $('jet').addEventListener(ev, holdJet(false));
+$('ringFuel').addEventListener('click', () => { jet.fuel = Math.min(1, jet.fuel + 0.45); });
+document.querySelectorAll('[data-land]').forEach((b) => b.addEventListener('click', () => { audio.unlock(); audio.land(+b.dataset.land, $('surface').value); }));
+let jetLast = performance.now();
+(function jetTick(now) {
+  const dt = Math.min(0.05, (now - jetLast) / 1000); jetLast = now;
+  const firing = jet.held && jet.fuel > 0;
+  jet.fuel = firing ? Math.max(0, jet.fuel - dt / 1.4) : jet.held ? jet.fuel : Math.min(1, jet.fuel + dt / 3);
+  audio.updateJet({ firing, fuel: jet.fuel, wanted: jet.held }, dt);
+  $('fuelV').textContent = Math.round(jet.fuel * 100);
+  requestAnimationFrame(jetTick);
+})(jetLast);
 const state = { speed: 0, throttle: 0, brake: 0, slip: 0, surface: 'asphalt', boost: false };
 let autoDrive = false, autoT = 0;
 
