@@ -18,6 +18,7 @@ const AIR_ENV = { grip: 0.55, rolling: 0 };
 const TANK_BURN = 1.4;   // seconds of full burn per tank
 const TANK_FILL = 2.6;   // seconds on the road to refill from empty
 const RING_FUEL = 0.45;  // tank refill per ring
+const RETRY_T = 6;       // seconds after a miss when a reset rewinds to that ring
 const IDLE = { steer: 0, throttle: 0, brake: 0, handbrake: false, boost: false };
 const fmtT = (t) => { if (t == null) return '--'; const m = Math.floor(t / 60); return `${m}:${(t - m * 60).toFixed(3).padStart(6, '0')}`; };
 
@@ -212,7 +213,14 @@ export class HopRace extends Race {
     const p = this.player, g = this.game;
     if (this.coach) this.coach.event('ring', hit);
     p.ringDone = p.ringDone || new Set();
+    p.ringMissed = p.ringMissed || new Map(); // ring -> seconds of penalty charged for missing it
     if (hit) {
+      if (p.ringDone.has(i)) return; // already counted this lap
+      // came back for a missed ring: the miss no longer counts
+      const owed = p.ringMissed.get(i);
+      if (owed) { this.penalty -= owed; this.raceTime -= owed; this.flash('PENALTY CLEARED'); }
+      p.ringMissed.delete(i);
+      if (this.missed && this.missed.i === i) this.missed = null;
       p.ringDone.add(i); p.hits++;
       p.combo = (p.comboT > 0 ? (p.combo || 0) : 0) + 1; p.comboT = 9;
       g.audio.ui('ring', p.combo);
@@ -222,8 +230,14 @@ export class HopRace extends Race {
       this.vibrate(25);
     } else {
       p.combo = 0;
-      if (this.kind === 'ringtrial' && this.state === 'race') { this.penalty += 2; this.raceTime += 2; this.flash('MISSED +2s · KEEP GOING'); g.audio.ui('back'); }
-      else if (this.state === 'race') this.flash('MISSED · NEXT RING AHEAD'); // never a reason to turn back
+      if (p.ringDone.has(i) || this.state !== 'race') return;
+      // Never a reason to turn back: the race goes on to the next ring. For a few seconds a
+      // reset rewinds to a run-up before this ring instead (see manualReset).
+      this.missed = { i, t: RETRY_T };
+      if (this.kind === 'ringtrial' && !p.ringMissed.has(i)) {
+        this.penalty += 2; this.raceTime += 2; p.ringMissed.set(i, 2);
+        this.flash(`MISSED +2s · KEEP GOING OR ${this.resetHint()} TO RETRY`); g.audio.ui('back');
+      } else this.flash(`MISSED · KEEP GOING OR ${this.resetHint()} TO RETRY`);
     }
   }
 
@@ -365,8 +379,8 @@ export class HopRace extends Race {
   }
 
   /** Back on the road, far enough before any gap to get a run-up. */
-  resetCar(c) {
-    let d = c.info.dist;
+  resetCar(c, dist) {
+    let d = dist ?? c.info.dist;
     for (let back = 0; back < 600; back += 5) {
       let clear = true;
       for (let a = -10; a <= 70 && clear; a += 5) if (this.gapAt(d - back + a)) clear = false;
@@ -377,8 +391,8 @@ export class HopRace extends Race {
     this.track.locate(p.x, p.z, -1, c.info);
   }
 
-  respawn(c, msg) {
-    this.resetCar(c);
+  respawn(c, msg, dist) {
+    this.resetCar(c, dist);
     const J = c.jet; J.air = false; J.vy = 0; J.firing = false; J.fuel = Math.max(J.fuel, 0.6);
     c.v.y = this.groundUnder(c);
     c.prevD = c.info.dist;
@@ -386,12 +400,40 @@ export class HopRace extends Race {
     if (c.isPlayer) { this.flash(msg); this.shake = 0.6; this.vibrate(100); }
   }
 
+  /** Back on the road with the jets reset (R, ↺, or automatically). */
+  recover(msg = 'BACK ON THE ROAD') {
+    if (this.state !== 'race' || this.player.finished) return;
+    this.respawn(this.player, msg);
+    this.player.prevDist = this.player.info.dist;
+    this.player.wrongT = 0; this.lostT = 0; this.stuckT = 0;
+  }
+
+  /** Right after a missed ring, a reset rewinds to a run-up before it; otherwise back on the road here. */
+  manualReset() {
+    const p = this.player, m = this.missed;
+    if (this.state !== 'race' || p.finished) return;
+    const r = m && m.t > 0 && this.rings[m.i];
+    if (!r) { this.recover(); return; }
+    const sp = clamp(p.v.speed, 24, 40);
+    // a run-up long enough to line up, but never back across the start line (that would count a lap)
+    this.respawn(p, 'RETRY THE RING', Math.max(r.dist - 110, 8));
+    const v = p.v;
+    v.vx = Math.sin(v.yaw) * sp; v.vz = Math.cos(v.yaw) * sp; // keep rolling so the retry is quick
+    p.jet.fuel = 1;
+    p.prevDist = p.info.dist; p.wrongT = 0; this.lostT = 0; this.stuckT = 0;
+    this.missed = null;
+    this.placeCamera(0, true);
+    this.game.audio.ui('back');
+  }
+
+  canAutoReset() { return !this.player.jet.air; }
+
   laps(c) {
     // the tutorial lap only ends once the steps before it are done
     if (this.kind === 'tutorial' && c.isPlayer && this.tut.step < TUTORIAL.length - 1) this.cfg.laps = Math.max(1, c.crossings);
     else if (this.kind === 'tutorial' && c.isPlayer && this.cfg.laps < c.crossings) this.cfg.laps = c.crossings;
     super.laps(c);
-    if (c.isPlayer && c.crossings >= 2 && c.lapMark !== c.crossings) { c.lapMark = c.crossings; c.ringDone = new Set(); this.updateRingVisuals(); }
+    if (c.isPlayer && c.crossings >= 2 && c.lapMark !== c.crossings) { c.lapMark = c.crossings; c.ringDone = new Set(); c.ringMissed = new Map(); this.missed = null; this.updateRingVisuals(); }
   }
 
   finishCar(c) {
@@ -427,6 +469,7 @@ export class HopRace extends Race {
       if (c.jet && c.jet.firing) c.v.boosting = true; // jet roar + camera kick
     }
     if (p.comboT > 0) p.comboT -= dt;
+    if (this.missed && (this.missed.t -= dt) <= 0) this.missed = null;
     super.postUpdate(dt, inp);
     for (const c of this.cars) {
       if (c.out || !c.jet) continue;
@@ -477,10 +520,23 @@ export class HopRace extends Race {
     if (!r) return null;
     const v = r.position.clone().project(this.camera);
     const behind = v.z > 1;
-    if (!behind && Math.abs(v.x) < 0.85 && Math.abs(v.y) < 0.85) return null;
+    if (!behind && Math.abs(v.x) < 1 && Math.abs(v.y) < 1) return null; // on screen: the ring marker covers it
     let x = v.x, y = v.y; if (behind) { x = -x; y = -y; }
     const l = Math.hypot(x, y) || 1;
     return { x: x / l, y: y / l };
+  }
+
+  /** On-screen marker over the next ring: screen position (-1..1) and distance in metres. */
+  nextRingMark() {
+    const r = this.rings[this.nextRing ?? 0];
+    if (!r || this.state === 'intro') return null;
+    const v = this.player.v;
+    const dist = Math.hypot(r.position.x - v.x, r.position.y - v.y, r.position.z - v.z);
+    if (dist < 18) return null;
+    const s = r.position.clone(); s.y += r.radius * 1.25;
+    s.project(this.camera);
+    if (s.z > 1 || Math.abs(s.x) > 1 || Math.abs(s.y) > 1) return null;
+    return { x: s.x, y: s.y, dist: Math.round(dist) };
   }
 
   hudData() {
@@ -497,8 +553,9 @@ export class HopRace extends Race {
       mode: 'flight',
       airspeedKmh: d.speedKmh,
       altitude: Math.max(0, Math.round(v.y - this.groundUnder(p))),
-      rings: { hit, total },
+      rings: { hit, total, next: Math.min(total, (this.nextRing ?? 0) + 1) },
       nextRingDir: this.nextRingDir(),
+      nextRingMark: this.nextRingMark(),
       thrust: J.fuel, jets: J.fuel, jetFiring: J.firing, airborne: J.air,
       lapCount: this.kind === 'freeflight' ? 99 : d.lapCount,
       extra, note,

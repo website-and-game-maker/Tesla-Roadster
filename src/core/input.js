@@ -83,7 +83,7 @@ export class Input {
       s.handbrake = s.handbrake || !!p.buttons[0]?.pressed;
       s.boost = s.boost || !!p.buttons[2]?.pressed || !!p.buttons[1]?.pressed;
       // edge buttons mapped onto keyboard codes so the game handles one set
-      const map = { 3: 'KeyC', 9: 'Escape', 8: 'KeyR', 12: 'ArrowUp', 13: 'ArrowDown' };
+      const map = { 3: 'KeyC', 9: 'Escape', 8: 'KeyR', 4: 'KeyR', 12: 'ArrowUp', 13: 'ArrowDown' }; // LB or View/Select: back on the road
       for (const [i, code] of Object.entries(map)) {
         const on = !!p.buttons[i]?.pressed;
         if (on && !this._padPrev[i]) this.pressed.add('Pad' + code);
