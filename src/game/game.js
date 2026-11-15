@@ -131,7 +131,7 @@ export class Game {
       if (t && t.action === 'skip' && this.race && this.lastCfg && this.lastCfg.mode === 'tutorial') this.race.skipTutorial && this.race.skipTutorial();
       if (t && t.action === 'skip' && this.race && this.race.coach) this.race.coach.stop(true);
     });
-    ui.on('respawn', () => { if (this.race && this.state === 'race') this.race.recover(); });
+    ui.on('respawn', () => { if (this.race && this.state === 'race') this.race.manualReset(); });
     ui.on('screen', (s) => { this.showroomView = s === 'garage' ? 'garage' : 'menu'; });
     if (ui.input && this.input.setExternal) {
       this.input.setExternal(() => (typeof ui.input.read === 'function' ? ui.input.read(1 / 60) : ui.input));

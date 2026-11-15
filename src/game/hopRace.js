@@ -17,19 +17,21 @@ import { collideCars } from '../physics/vehicle.js';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const AIR_ENV = { grip: 0.55, rolling: 0 };
 const FENCE_H = 16;      // the track's energy fence stops you up to this height: leaving takes a deliberate full burn
-const OFF_GRACE = 10;    // seconds a racer may spend outside the fence before being sent back
 const STEP_UP = 0.5;     // off the track, ground rising more than this in one step is a wall (cliff, rock, building)
 const DROP = 0.4;        // ...and ground falling away more than this means you are in the air
 const TANK_BURN = 1.4;   // seconds of full burn per tank
 const TANK_FILL = 2.6;   // seconds on the road to refill from empty
 const RING_FUEL = 0.45;  // tank refill per ring
+const RING_R = 4;        // ring radius: a reward you have to aim for, not a gate you are owed
+const RING_KICK = 7;     // m/s shove forward for threading a ring
+const RING_BONUS = 1.5;  // Ring Trial: seconds taken off the clock per ring
 const IDLE = { steer: 0, throttle: 0, brake: 0, handbrake: false, boost: false };
 const fmtT = (t) => { if (t == null) return '--'; const m = Math.floor(t / 60); return `${m}:${(t - m * 60).toFixed(3).padStart(6, '0')}`; };
 
 const TUTORIAL = [
   { id: 'drive', text: 'Hold W (or GO) to drive. Steer with A / D or ← / →.', key: 'W', touch: 'Hold GO, and drag on the left to steer.', done: (r) => r.player.v.speed > 22 },
   { id: 'jet', text: 'Fire the jets: hold Space to hop. A tap is a short hop, holding flies higher.', key: 'Space', touch: 'Hold JET to hop. A tap is a short hop.', done: (r) => r.tut.hops >= 2 },
-  { id: 'ring', text: 'Jet through a glowing ring. Rings refill your tank. Follow the arrow if you lose it.', key: 'Space', touch: 'Hold JET as you reach the ring.', done: (r) => r.tut.rings >= 1 },
+  { id: 'ring', text: 'Jet through a glowing ring. Rings are a bonus: jet fuel and a burst of speed.', key: 'Space', touch: 'Hold JET as you reach the ring.', done: (r) => r.tut.rings >= 1 },
   { id: 'glide', text: 'The tank is small. When it runs dry the wings glide you down. It refills on the road.', key: 'A D', touch: 'Steer while you glide.', done: (r) => r.tut.landings >= 3 },
   { id: 'boost', text: 'Overdrive: hold Shift on the road for a burst of speed.', key: 'Shift', touch: 'Hold ⚡ on the road.', done: (r) => r.tut.boostT > 0.8 },
   { id: 'lap', text: 'Finish the lap. You\'re ready to race!', key: '', touch: '', done: (r) => r.player.finished },
@@ -47,7 +49,7 @@ export class HopRace extends Race {
     super(game, { ...cfg, type: base, laps, opponents: kind === 'ringrace' ? cfg.opponents : 0 });
     this.kind = kind;
     this.isFlight = true;
-    this.penalty = 0;
+    this.penalty = 0; this.bonus = 0;
     this.tut = { step: 0, hops: 0, rings: 0, landings: 0, boostT: 0 };
     const wd = (game.worlds || []).find((w) => w.id === cfg.worldId);
     this.worldMode = wd && wd.modes && wd.modes.includes('hop') ? 'hop' : 'ground';
@@ -98,7 +100,7 @@ export class HopRace extends Race {
     if (Array.isArray(w.hopRings) && w.hopRings.length) {
       for (const r of w.hopRings) {
         const info = tr.locate(r.position.x, r.position.z, r.u != null ? Math.round(r.u * tr.n) % tr.n : -1, {});
-        rings.push({ dist: info.dist, lat: info.lat, position: r.position.clone(), tx: info.tx, tz: info.tz, radius: Math.max(r.radius || 6, 6) });
+        rings.push({ dist: info.dist, lat: info.lat, position: r.position.clone(), tx: info.tx, tz: info.tz, radius: this.kind === 'tutorial' ? 6 : Math.min(r.radius || RING_R, RING_R + 0.5) });
       }
     } else {
       // above straighter stretches, every ~300 m, 4.5-10 m over the road
@@ -118,8 +120,8 @@ export class HopRace extends Race {
         // (bridges, hairpins) would otherwise pin the ring to the wrong stretch
         const lat = (rnd() - 0.5) * tr.roadHalf * 0.6;
         const p = tr.pointAt(d, lat, {});
-        const h = 4.5 + rnd() * 5.5;
-        rings.push({ dist: d, lat, position: new THREE.Vector3(p.x, p.y + h, p.z), tx: Math.sin(p.yaw), tz: Math.cos(p.yaw), radius: 6 });
+        const h = 6 + rnd() * 6;
+        rings.push({ dist: d, lat, position: new THREE.Vector3(p.x, p.y + h, p.z), tx: Math.sin(p.yaw), tz: Math.cos(p.yaw), radius: this.kind === 'tutorial' ? 6 : RING_R }); // roomy while learning
       }
     }
     rings.sort((a, b) => a.dist - b.dist);
@@ -210,10 +212,13 @@ export class HopRace extends Race {
       if (off > moved) continue;
       const v = c.v;
       const dx = v.x - r.position.x, dy = (v.y + 0.6) - r.position.y, dz = v.z - r.position.z;
-      const hit = Math.hypot(dx, dy, dz) <= r.radius * 1.25; // forgiving: clipping the rim counts
+      const hit = Math.hypot(dx, dy, dz) <= r.radius; // you have to actually thread it
       if (hit) {
+        // the reward: jet fuel, Overdrive charge and a shove forward
         c.jet.fuel = Math.min(1, c.jet.fuel + RING_FUEL);
-        v.boost = Math.min(v.stats.boostCap, v.boost + 0.12);
+        v.boost = Math.min(v.stats.boostCap, v.boost + 0.2);
+        const kick = Math.min(RING_KICK, Math.max(0, v.stats.vmax * 1.2 - v.speed));
+        v.vx += Math.sin(v.yaw) * kick; v.vz += Math.cos(v.yaw) * kick;
       }
       if (c.isPlayer) this.playerRing(i, hit);
     }
@@ -224,18 +229,16 @@ export class HopRace extends Race {
     if (this.coach) this.coach.event('ring', hit);
     p.ringDone = p.ringDone || new Set();
     if (hit) {
+      if (p.ringDone.has(i)) return; // already counted this lap
       p.ringDone.add(i); p.hits++;
       p.combo = (p.comboT > 0 ? (p.combo || 0) : 0) + 1; p.comboT = 9;
       g.audio.ui('ring', p.combo);
-      this.flash(p.combo >= 3 ? `RING COMBO ×${p.combo}` : 'JETS REFILLED');
+      if (this.kind === 'ringtrial' && this.state === 'race') { this.bonus += RING_BONUS; this.raceTime = Math.max(p.lapStart, this.raceTime - RING_BONUS); }
+      this.flash(p.combo >= 3 ? `RING COMBO ×${p.combo}` : this.kind === 'ringtrial' ? `RING · −${RING_BONUS}s` : 'RING · JETS + SPEED');
       this.ringFlash = { ring: this.rings[i], t: 0.5 };
       this.tut.rings++;
       this.vibrate(25);
-    } else {
-      p.combo = 0;
-      if (this.kind === 'ringtrial' && this.state === 'race') { this.penalty += 2; this.raceTime += 2; this.flash('MISSED +2s · KEEP GOING'); g.audio.ui('back'); }
-      else if (this.state === 'race') this.flash('MISSED · NEXT RING AHEAD'); // never a reason to turn back
-    }
+    } else p.combo = 0; // rings are a bonus: missing one costs nothing and nobody nags you about it
   }
 
   // ------------------------------------------------------------------ physics
@@ -319,8 +322,8 @@ export class HopRace extends Race {
     if (a < lim - 0.5) { c.outside = false; c.outT = 0; return; }
     if (!racing) return;
     c.outT += dt;
-    const grace = !c.isPlayer ? 2.5 : this.kind === 'freeflight' || this.kind === 'tutorial' ? Infinity : (this.offTrackGrace ?? OFF_GRACE);
-    if (c.outT > grace || a > 600) this.respawn(c, 'BACK ON TRACK');
+    // The player is never pulled back: getting home is their job (or one press of reset). AI that strays is tidied up.
+    if (!c.isPlayer && c.outT > 2.5) this.respawn(c, '');
   }
 
   /** A short flash of the fence where the player touched it. */
@@ -469,8 +472,8 @@ export class HopRace extends Race {
   }
 
   /** Back on the road, far enough before any gap to get a run-up. */
-  resetCar(c) {
-    let d = c.info.dist;
+  resetCar(c, dist) {
+    let d = dist ?? c.info.dist;
     for (let back = 0; back < 600; back += 5) {
       let clear = true;
       for (let a = -10; a <= 70 && clear; a += 5) if (this.gapAt(d - back + a)) clear = false;
@@ -481,8 +484,8 @@ export class HopRace extends Race {
     this.track.locate(p.x, p.z, -1, c.info);
   }
 
-  respawn(c, msg) {
-    this.resetCar(c);
+  respawn(c, msg, dist) {
+    this.resetCar(c, dist);
     const J = c.jet; J.air = false; J.vy = 0; J.firing = false; J.fuel = Math.max(J.fuel, 0.6);
     c.outside = false; c.outT = 0;
     c.v.y = this.groundUnder(c);
@@ -490,6 +493,18 @@ export class HopRace extends Race {
     c.respawned = true;
     if (c.isPlayer) { this.flash(msg); this.shake = 0.6; this.vibrate(100); }
   }
+
+  /** Back on the road with the jets reset (R, ↺, or automatically). */
+  recover(msg = 'BACK ON THE ROAD') {
+    if (this.state !== 'race' || this.player.finished) return;
+    this.respawn(this.player, msg);
+    this.player.prevDist = this.player.info.dist;
+    this.player.wrongT = 0; this.lostT = 0; this.stuckT = 0;
+  }
+
+  manualReset() { this.recover(); }
+
+  canAutoReset() { return !this.player.jet.air; }
 
   laps(c) {
     // the tutorial lap only ends once the steps before it are done
@@ -608,10 +623,23 @@ export class HopRace extends Race {
     if (!r) return null;
     const v = r.position.clone().project(this.camera);
     const behind = v.z > 1;
-    if (!behind && Math.abs(v.x) < 0.85 && Math.abs(v.y) < 0.85) return null;
+    if (!behind && Math.abs(v.x) < 1 && Math.abs(v.y) < 1) return null; // on screen: the ring marker covers it
     let x = v.x, y = v.y; if (behind) { x = -x; y = -y; }
     const l = Math.hypot(x, y) || 1;
     return { x: x / l, y: y / l };
+  }
+
+  /** On-screen marker over the next ring: screen position (-1..1) and distance in metres. */
+  nextRingMark() {
+    const r = this.rings[this.nextRing ?? 0];
+    if (!r || this.state === 'intro') return null;
+    const v = this.player.v;
+    const dist = Math.hypot(r.position.x - v.x, r.position.y - v.y, r.position.z - v.z);
+    if (dist < 18) return null;
+    const s = r.position.clone(); s.y += r.radius * 1.25;
+    s.project(this.camera);
+    if (s.z > 1 || Math.abs(s.x) > 1 || Math.abs(s.y) > 1) return null;
+    return { x: s.x, y: s.y, dist: Math.round(dist) };
   }
 
   hudData() {
@@ -619,21 +647,19 @@ export class HopRace extends Race {
     const total = this.rings.length, hit = p.ringDone ? p.ringDone.size : 0;
     let extra = d.extra;
     if (this.kind === 'tutorial' && this.tutText) extra = this.tutText;
-    if (this.kind === 'ringtrial' && this.penalty) extra = `${extra}${extra ? ' · ' : ''}PENALTY +${this.penalty}s`;
+    if (this.kind === 'ringtrial' && this.bonus) extra = `${extra}${extra ? ' · ' : ''}RING BONUS −${this.bonus.toFixed(1)}s`;
     let note = d.note;
     if (!note && J.air && J.fuel <= 0.01) note = 'GLIDING';
     else if (!note && !J.air && J.fuel < 0.25) note = 'JETS REFILLING';
-    if (p.outside && this.state === 'race') {
-      const grace = this.kind === 'freeflight' || this.kind === 'tutorial' ? Infinity : (this.offTrackGrace ?? OFF_GRACE);
-      note = grace === Infinity ? (note || 'OFF TRACK') : `OFF TRACK · BACK IN ${Math.max(1, Math.ceil(grace - p.outT))}`;
-    }
+    if (p.outside && this.state === 'race' && !note) note = 'OFF TRACK';
     return {
       ...d,
       mode: 'flight',
       airspeedKmh: d.speedKmh,
       altitude: Math.max(0, Math.round(v.y - this.groundUnder(p))),
-      rings: { hit, total },
+      rings: { hit, total, next: Math.min(total, (this.nextRing ?? 0) + 1) },
       nextRingDir: this.nextRingDir(),
+      nextRingMark: this.nextRingMark(),
       thrust: J.fuel, jets: J.fuel, jetFiring: J.firing, airborne: J.air,
       lapCount: this.kind === 'freeflight' ? 99 : d.lapCount,
       extra, note,
