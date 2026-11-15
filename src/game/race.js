@@ -387,9 +387,10 @@ export class Race {
     const pv = this.player.v, pi = this.player.info;
     const along = pv.vx * pi.tx + pv.vz * pi.tz;
     const facing = Math.sin(pv.yaw) * pi.tx + Math.cos(pv.yaw) * pi.tz;
-    if (along < -4) this.player.wrongT += dt; else this.player.wrongT = 0;
+    const roaming = !!this.player.outside; // outside the track fence there is no wrong way
+    if (along < -4 && !roaming) this.player.wrongT += dt; else this.player.wrongT = 0;
     // lost = pointing backwards and going nowhere useful (spun, wedged on a wall, creeping back for a ring)
-    if (this.state === 'race' && !this.player.finished && facing < -0.25 && along < 6) this.lostT = (this.lostT || 0) + dt; else this.lostT = 0;
+    if (this.state === 'race' && !this.player.finished && !roaming && facing < -0.25 && along < 6) this.lostT = (this.lostT || 0) + dt; else this.lostT = 0;
     if (this.player.wrongT > 3.5 || this.lostT > 5) this.recover('TURNED YOU AROUND');
 
     // off the road: rumble, and say why the car is slow
