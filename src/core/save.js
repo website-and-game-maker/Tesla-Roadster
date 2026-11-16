@@ -14,6 +14,7 @@ export function defaultProfile() {
     owned: { paints: ['pearlWhite', 'ultraRed', 'solidBlack'], wheels: ['aero'] },
     car: { model: 'rocket', paint: 'ultraRed', wheels: 'aero' },
     tutorialDone: false,
+    secrets: { found: {}, done: {}, trail: '', hunter: false, intro: false, trailsSeen: 0 }, // easter eggs (src/secrets)
     coached: false,       // first-race coaching prompts have been seen
     upgrades: { motor: 0, inverter: 0, tires: 0, battery: 0 },
     settings: {

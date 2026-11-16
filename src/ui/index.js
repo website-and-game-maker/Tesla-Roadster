@@ -1045,6 +1045,10 @@ export function createUI(opts = {}) {
     detected,
     showMenu, showPause: pause, pause, resume, enterRace, showResults,
     go: (n, d) => go(n, { data: d }),
+    /** Other modules can add a full screen (e.g. the Secrets log) and get back/gamepad navigation for free. */
+    addScreen(name, el, onShow) { mount(name, el); if (onShow) el._onShow = onShow; return el; },
+    startRace,
+    get screen() { return current; },
     setProfile(p = {}) {
       profile = { ...profile, ...p, owned: { ...profile.owned, ...(p.owned || {}) }, upgrades: { ...profile.upgrades, ...(p.upgrades || {}) } };
       if (p.car?.model && modelOf(p.car.model) && p.car.model !== settings.car.model) {

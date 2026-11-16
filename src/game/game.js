@@ -12,6 +12,7 @@ import { Race } from './race.js';
 import { HopRace } from './hopRace.js';
 import { attachMultiplayer } from '../multiplayer/game-bridge.js';
 import { attachAccounts } from './accounts.js';
+import { attachSecrets } from '../secrets/index.js';
 
 const fmt = (t) => { if (t == null) return '--'; const m = Math.floor(t / 60); return `${m}:${(t - m * 60).toFixed(3).padStart(6, '0')}`; };
 const costOf = (list, id) => { const i = list.findIndex((x) => x.id === id); const it = list[i]; return it && it.cost != null ? it.cost : (i < 3 ? 0 : 400 * i); };
@@ -58,6 +59,7 @@ export class Game {
       try { this.online = attachMultiplayer(this, THREE); } catch (e) { console.error('[game] multiplayer failed to start', e); }
     }
     attachAccounts(this).catch((e) => console.error('[game] accounts failed to start', e));
+    try { attachSecrets(this); } catch (e) { console.error('[game] secrets failed to start', e); }
     this.applyPreset(this.quality.preset);
     this.inputState = this.input.state;
     this.state = 'menu';

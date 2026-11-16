@@ -88,3 +88,28 @@ The Roadster drives on the road and fires short thruster bursts to hop over traf
   - kinds: `ringrace` (vs AI), `ringtrial` (missed ring +2 s), `freeflight`, `tutorial` (drive, jet, ring, glide, boost, lap).
 - Input: the handbrake input is the jet in this mode (Space, touch JET button, gamepad A).
 - Worlds pick their road layout with `createWorld(id, { mode: 'hop' })`; gap worlds (Spires, Red Rock Run, Cloud Isles) are hop-only.
+
+## Secrets (easter eggs): `src/secrets/`
+
+Three hidden objects per world (30 in all), each with a challenge. Wired in with one call,
+`attachSecrets(game)` in `game.js`; the races do not know about it.
+
+- `defs.js`: the 30 secrets (name, hint, flavour text, tier, challenge), rewards, jet trails.
+  A secret is placed **relative to the track** (`at` 0..1 along the lap, `side`, `tier`), never at
+  fixed coordinates, so it stays reachable when scenery or barriers change:
+  `low` = just past the road edge, a tap of the jets up; `high` = over the road, a long burn;
+  `wall` = off the track on open ground outside the 16 m fence (full burn over it, then drive),
+  or on top of the fence on sky roads where there is no ground.
+- `hunt.js`: per race. Finds a valid spot for each secret (off gaps, rings, corners and rock),
+  detects the player's car touching one, runs challenges (Spark Run, Sky High, Long Glide,
+  Bullseye; sized from the world's gravity), feeds the radar, draws the jet trail.
+- `props.js`: the little procedural models. `overlay.js` + `secrets.css`: banner, radar and
+  challenge card in the race. `log.js`: the Secrets screen and its main-menu entry.
+- Progression: silent until found. `HUNTER_STARS` career stars or `HUNTER_FINDS` finds make the
+  player a Secret Hunter: hints in the log, light beams, a radar arrow, and Secret Hunt (free
+  roam from the log) where touching a secret starts its challenge.
+- Runs in Fly mode only (not the tutorial, not Drive). State is `profile.secrets`.
+- Reads from the race: `player.v`, `player.jet`, `player.info`, `player.outside`, `track`
+  (`locate/pointAt/curvatureAt/roadHalf/wallHalf`), `groundAt`, `gapAt`, `rings`, `g`, `jetUp`,
+  `kind`, `skyWorld`, `respawn()`, `flash()`. UI hooks used: `ui.addScreen`, `ui.startRace`, `ui.screen`.
+- Check: `node tests/secrets/defs.test.js`.

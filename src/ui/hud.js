@@ -194,7 +194,9 @@ export function createHUD(root, getSettings) {
         } else r.arrow.classList.remove('on');
         // marker floating over the next ring while it is on screen, with the distance to it
         const mk = d.nextRingMark;
-        if (mk) {
+        // not while it would sit on top of the ring counter and altitude readout at the top centre
+        const topPx = mk ? (1 - mk.y) * 0.5 * innerHeight : 0;
+        if (mk && !(Math.abs(mk.x) < 0.3 && topPx < (matchMedia('(pointer: coarse)').matches ? 170 : 110))) {
           r.mark.style.left = `${(mk.x + 1) * 50}%`; r.mark.style.top = `${(1 - mk.y) * 50}%`;
           setText(r.markD, 'markD', `${mk.dist} m`);
           r.mark.classList.add('on');
