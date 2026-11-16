@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Vehicle, carStats, collideCars } from '../physics/vehicle.js';
 import { TrackSampler } from './trackSampler.js';
 import { AIDriver } from './ai.js';
-import { SkidMarks, Smoke } from './effects.js';
+import { SkidMarks, Smoke, Particles, dustFor } from './effects.js';
 import { Coach } from './coach.js';
 
 const STEP = 1 / 120;
@@ -93,7 +93,7 @@ export class Race {
     const OFFROAD = { alpine: ['snow', 0xf2f6fa], coast: ['grass', 0x9a8a5e], city: ['dirt', 0x8f8a82], launch: ['dirt', 0xa09684], saltflats: ['sand', 0xe9e2d2],
       mars: ['sand', 0xc87f55], moon: ['dirt', 0xb9b9b9], canyon: ['sand', 0xc98f5e], isles: ['grass', 0x9fb07a], spires: ['dirt', 0x8a8f99] };
     [this.offSurface, this.dustColor] = OFFROAD[this.cfg.worldId] || ['dirt', 0xa89878];
-    this.dust = new Smoke(this.scene, Math.round(260 * q.particles) + 40, this.dustColor);
+    this.dust = new Particles(this.scene, Math.round(500 * q.particles) + 80); // off-road spray, jet exhaust, landing puffs
     this.offT = 0;
 
     // ghost (time trial)
@@ -348,7 +348,7 @@ export class Race {
     const surf = this.world.getSurface ? this.world.getSurface(v.x, v.z) : null;
     const type = surf ? surf.type : (a <= tr.roadHalf ? 'road' : a <= tr.roadHalf + 0.8 ? 'kerb' : 'shoulder');
     c.offRoad = type === 'shoulder';
-    v.surface = c.offRoad ? this.offSurface : 'asphalt';
+    v.surface = c.offRoad ? this.offSurface : type === 'kerb' ? 'kerb' : 'asphalt'; // kerb only changes the tyre sound (rumble strip)
     const env = this._env || (this._env = { grip: 1, rolling: 0 });
     if (type === 'road') { env.grip = surf ? surf.grip : 1; env.rolling = 0; }
     else if (type === 'kerb') { env.grip = surf ? surf.grip : 0.93; env.rolling = 0.12; }
@@ -364,9 +364,21 @@ export class Race {
   recover(msg = 'BACK ON THE ROAD') {
     if (this.state !== 'race' || this.player.finished) return;
     this.resetCar(this.player);
-    this.player.wrongT = 0; this.lostT = 0;
+    this.player.wrongT = 0; this.lostT = 0; this.stuckT = 0;
     this.flash(msg);
   }
+
+  /** R, gamepad LB/View, or the phone ↺ button. Fly mode overrides this to retry a missed ring. */
+  manualReset() { this.recover(); }
+
+  /** What to press to get back on the road, for the device in use. */
+  resetHint() {
+    const d = this.game.input.lastDevice;
+    return d === 'touch' ? 'TAP ↺' : d === 'gamepad' ? 'PRESS LB' : 'PRESS R';
+  }
+
+  /** Can the car be auto-reset right now? (Fly mode says no while airborne.) */
+  canAutoReset() { return true; }
 
   /** Sharp corner coming up at this speed? (used by the first-race coach) */
   cornerAhead() {
@@ -381,16 +393,25 @@ export class Race {
     const g = this.game;
     if (this.noteT > 0) { this.noteT -= dt; if (this.noteT <= 0) this.note = ''; }
     if (g.input.wasPressed('KeyC', 'PadKeyC')) { this.camMode = (this.camMode + 1) % 3; g.profile.settings.camera = this.camMode; g.save(); }
-    if (g.input.wasPressed('KeyR', 'PadKeyR')) this.recover();
+    if (g.input.wasPressed('KeyR', 'PadKeyR')) this.manualReset();
 
     // wrong way: warn first, then turn the car around for you
     const pv = this.player.v, pi = this.player.info;
     const along = pv.vx * pi.tx + pv.vz * pi.tz;
     const facing = Math.sin(pv.yaw) * pi.tx + Math.cos(pv.yaw) * pi.tz;
-    if (along < -4) this.player.wrongT += dt; else this.player.wrongT = 0;
+    const roaming = !!this.player.outside; // outside the track fence there is no wrong way
+    if (along < -4 && !roaming) this.player.wrongT += dt; else this.player.wrongT = 0;
     // lost = pointing backwards and going nowhere useful (spun, wedged on a wall, creeping back for a ring)
-    if (this.state === 'race' && !this.player.finished && facing < -0.25 && along < 6) this.lostT = (this.lostT || 0) + dt; else this.lostT = 0;
-    if (this.player.wrongT > 3.5 || this.lostT > 5) this.recover('TURNED YOU AROUND');
+    if (this.state === 'race' && !this.player.finished && !roaming && facing < -0.25 && along < 6) this.lostT = (this.lostT || 0) + dt; else this.lostT = 0;
+    // pushing the pedals but going nowhere (nosed into a wall, beached on a kerb)
+    const pushing = inp && (inp.throttle > 0.3 || inp.brake > 0.3);
+    this.stuckT = this.state === 'race' && !this.player.finished && pushing && pv.speed < 2 ? (this.stuckT || 0) + dt : Math.max(0, (this.stuckT || 0) - dt * 2);
+    // Never move the car for the player: only remind them the reset exists, now and then.
+    this.hintT = Math.max(0, (this.hintT || 0) - dt);
+    if (this.hintT === 0 && (this.player.wrongT > 3 || this.lostT > 4 || this.stuckT > 3)) {
+      this.flash(g.input.lastDevice === 'touch' ? 'TAP ↺ TO GET BACK ON THE ROAD' : g.input.lastDevice === 'gamepad' ? 'PRESS BACK TO GET BACK ON THE ROAD' : 'PRESS R TO GET BACK ON THE ROAD');
+      this.hintT = 6;
+    }
 
     // off the road: rumble, and say why the car is slow
     const off = this.player.offRoad && this.player.v.grounded !== false && !(this.player.jet && this.player.jet.air);
@@ -423,8 +444,14 @@ export class Race {
         const wx = v.x - fx * 1.3 + rx * 0.84 * side, wz = v.z - fz * 1.3 + rz * 0.84 * side;
         this.skids.add(c.name + k, wx, v.y + 0.03, wz, rx, rz, v.slip + 0.3, sliding);
         if (sliding && q.particles > 0.3 && Math.random() < q.particles * 0.9) this.smoke.emit(wx, v.y, wz, v.vx, v.vz, 0.4 + v.slip * 0.6);
-        // kicked-up dirt off the road
-        if (c.offRoad && !(c.jet && c.jet.air) && v.speed > 6 && Math.random() < q.particles * Math.min(1, v.speed / 25)) this.dust.emit(wx, v.y, wz, v.vx, v.vz, 0.5 + Math.min(0.5, v.speed / 60));
+        // off-road: the wheels throw up a low dust cloud and heavier bits (stones, turf, snow) in the world's colour
+        const dust = c.offRoad && !(c.jet && c.jet.air) && v.speed > 6 && dustFor(v.surface, this.world);
+        if (dust && Math.random() < q.particles * dust.amount * Math.min(1, v.speed / 25) * (1 + v.slip)) {
+          const back = 0.25 + Math.random() * 0.2, heavy = Math.random() < 0.35;
+          this.dust.emit(wx, v.y + 0.15, wz, v.vx * back + (Math.random() - 0.5) * 2, heavy ? 2 + Math.random() * 3 : 0.6 + Math.random(), v.vz * back + (Math.random() - 0.5) * 2, heavy
+            ? { color: dust.color, size: 0.18 + Math.random() * 0.15, life: 0.5 + Math.random() * 0.4, gravity: 4 + dust.heavy * 8, grow: 0.3 }
+            : { color: this.dustColor ?? dust.color, size: 0.8 + Math.random() * 0.6, life: 0.9 + Math.random() * 0.7, gravity: -0.3, grow: 3 });
+        }
       }
     }
     this.smoke.update(dt); this.dust.update(dt);
@@ -451,7 +478,7 @@ export class Race {
     if (this.ownSun) { const p = this.player.model.object.position; this.ownSun.position.set(p.x + 60, p.y + 120, p.z + 40); this.ownSun.target.position.copy(p); }
 
     // audio
-    g.audio.update({ speed: pv.speed, throttle: pv.throttle, brake: pv.brake, slip: pv.drifting ? 1 : pv.slip, surface: pv.surface, boost: pv.boosting }, dt);
+    g.audio.update({ speed: pv.speed, throttle: pv.throttle, brake: pv.brake, slip: pv.drifting ? 1 : pv.slip, surface: pv.surface, boost: pv.boosting && !pv.jetFiring, airborne: !!pv.airborne }, dt);
     g.audio.music && g.audio.music.setIntensity && g.audio.music.setIntensity(clamp(pv.speed / 70, 0, 1));
 
     // end of race flow

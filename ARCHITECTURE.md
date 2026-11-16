@@ -48,7 +48,8 @@ lines, wall collisions and the minimap.
 ### Audio — `src/audio/AudioEngine.js`
 ```js
 const audio = new AudioEngine(); audio.unlock();     // first user gesture
-audio.update({ speed, throttle, brake, slip, surface, boost }, dt)
+audio.update({ speed, throttle, brake, slip, surface, boost, airborne }, dt)
+audio.updateJet({ firing, fuel, wanted }, dt); audio.land(impact, surface)   // jet hops
 audio.collision(impulse); audio.ui('click'|'hover'|'confirm'|'back'|'countdown'|'go'|'lap'|'unlock')
 audio.music.play('menu'|'race'|'results'); audio.music.setIntensity(0..1)
 audio.setVolume(channel, v); audio.mute(b); export mountAudioSettings(container, audio)

@@ -408,7 +408,12 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 4px 7px; border-radius:
 .h-rings, .h-alt, .h-arrow, .h-thrust { display: none; }
 .ui-hud.flight .h-rings, .ui-hud.flight .h-alt, .ui-hud.flight .h-thrust { display: flex; }
 .ui-hud.flight .h-arrow { display: block; }
-.ui-hud.flight .h-gear, .ui-hud.flight .h-drift, .ui-hud.flight .h-wrong { display: none; }
+.ui-hud.flight .h-gear, .ui-hud.flight .h-drift { display: none; }
+.h-mark { position: absolute; display: none; transform: translate(-50%, -100%); flex-direction: column; align-items: center; gap: 2px; pointer-events: none; opacity: 0; transition: opacity .2s; }
+.ui-hud.flight .h-mark { display: flex; }
+.h-mark.on { opacity: 1; }
+.h-mark i { width: 16px; height: 16px; background: #35e8ff; clip-path: polygon(50% 100%, 0 0, 100% 0); filter: drop-shadow(0 0 6px rgba(53,232,255,.9)); animation: ui-pulse 1s ease-in-out infinite; order: 2; }
+.h-mark b { font-size: 13px; font-weight: 800; letter-spacing: .05em; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.9); }
 .h-rings { position: absolute; top: calc(16px + var(--safe-t)); left: 50%; transform: translateX(-50%); align-items: baseline; gap: 4px; padding: 8px 18px; border-radius: 14px; background: rgba(10,12,16,.45); border: 1px solid var(--line); text-shadow: 0 2px 12px rgba(0,0,0,.7); }
 .h-rings span { font-size: 10px; letter-spacing: .25em; color: var(--muted); margin-right: 8px; }
 .h-rings b { font-size: 28px; font-style: italic; }
