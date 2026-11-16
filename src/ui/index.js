@@ -784,15 +784,18 @@ export function createUI(opts = {}) {
       <button class="tut-skip">Skip tutorial</button></div></div>`);
   shell.appendChild(tutEl);
   let tutCurrent = null, tutTimer = 0, tutCount = 0;
-  const keyChips = (hint) => String(hint || '').split(/\s*\+\s*|\s*\/\s*/).filter(Boolean).map((k) => `<kbd>${esc(k)}</kbd>`).join('<em>or</em>');
+  // "W / ↑" reads as W or ↑; keys used together sit side by side ("A D"). A non-breaking space keeps a two-word name on one key.
+  const keyChips = (hint) => String(hint || '').split(/\s*\+\s*|\s*\/\s*/).filter(Boolean).map((g) => g.split(' ').filter(Boolean).map((k) => `<kbd>${esc(k)}</kbd>`).join('')).join('<em>or</em>');
   tutEl.querySelector('.tut-skip').addEventListener('click', () => { sfx('back'); tutorial.hide(); emit('tutorial', { action: 'skip' }); });
   const tutorial = {
     /** Show a step card that waits for the player: { id, text, keyHint, touchHint?, step?, total? } */
-    show({ id, text, keyHint, touchHint, step, total } = {}) {
+    show({ id, text, keyHint, touchHint, step, total, label, skipLabel, coach } = {}) {
       clearTimeout(tutTimer);
       tutCurrent = id; tutCount++;
       tutEl.classList.remove('done');
-      tutEl.querySelector('.tut-step').textContent = step ? `STEP ${step}${total ? ' / ' + total : ''}` : 'TUTORIAL';
+      tutEl.querySelector('.tut-step').textContent = label || (step ? `STEP ${step}${total ? ' / ' + total : ''}` : 'TUTORIAL');
+      tutEl.querySelector('.tut-skip').textContent = skipLabel || 'Skip tutorial';
+      tutEl.classList.toggle('coach', !!coach);
       tutEl.querySelector('.tut-text').textContent = text || '';
       const hint = touch && touchHint ? touchHint : keyHint;
       tutEl.querySelector('.tut-keys').innerHTML = hint ? keyChips(hint) : '';
@@ -1029,6 +1032,8 @@ export function createUI(opts = {}) {
   Object.defineProperties(api, Object.getOwnPropertyDescriptors({
     on, off, settings, input, hud, toast, touch: touchCtl, tutorial,
     get vehicleMode() { return settings.vehicleMode; },
+    /** 'touch' | 'keyboard' | 'gamepad': what the player is using right now. */
+    get device() { return device(); },
     setVehicleMode(m) { settings.vehicleMode = m; saveSettings(settings); refreshBindings(); },
     /** Reflect auth state from the backend: { signedIn, email, name, pending, error } */
     setAccount(a = {}) {

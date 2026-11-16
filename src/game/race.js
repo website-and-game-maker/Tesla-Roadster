@@ -123,7 +123,7 @@ export class Race {
     g.ui.hud.setTrack && g.ui.hud.setTrack(pts, this.track.bounds);
     g.ui.hud.setMode && g.ui.hud.setMode('ground');
     // a new player's first race teaches itself, whatever mode they picked
-    if (!this.online && !g.profile.coached && this.cfg.mode !== 'tutorial') this.coach = new Coach(this, 'ground');
+    if (!this.isFlight && Coach.wanted(g, this)) this.coach = new Coach(this, 'ground');
 
     this.camera.far = q.drawDist * 1.6;
     if (this.scene.fog) { this.scene.fog.far = Math.min(this.scene.fog.far || q.drawDist, q.drawDist); this.scene.fog.near = Math.min(this.scene.fog.near, q.drawDist * 0.2); }
@@ -579,6 +579,7 @@ export class Race {
     this.skids.dispose(); this.smoke.dispose(); this.dust.dispose();
     this.world.dispose && this.world.dispose();
     if (this.online) this.online.dispose();
+    if (this.coach) this.coach.dispose();
   }
 }
 
