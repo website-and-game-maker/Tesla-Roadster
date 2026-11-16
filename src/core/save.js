@@ -16,6 +16,7 @@ export function defaultProfile() {
     tutorialDone: false,
     secrets: { found: {}, done: {}, trail: '', hunter: false, intro: false, trailsSeen: 0 }, // easter eggs (src/secrets)
     coached: false,       // first-race coaching prompts have been seen
+    coach: {},            // first-race coach: lesson id -> 'ok' (done) or times offered; off = tips hidden
     upgrades: { motor: 0, inverter: 0, tires: 0, battery: 0 },
     settings: {
       quality: 'auto', showFps: false, units: 'kmh', camera: 0,

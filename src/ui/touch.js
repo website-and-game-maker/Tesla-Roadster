@@ -141,6 +141,12 @@ export function createTouchControls(root, input, getSettings, onPause, onTiltTog
       if (hb) { hb.textContent = hop ? 'JET' : 'DRIFT'; hb.setAttribute('aria-label', hop ? 'Jets' : 'Handbrake'); }
     },
     setThrust,
+    /** Pulse the control a coaching card is talking about: a data-btn name, 'steer', 'reset', or null for none. */
+    highlight(name) {
+      el.querySelectorAll('.teach').forEach((n) => n.classList.remove('teach'));
+      const t = name === 'steer' ? el.querySelector('.t-steer-track') : name === 'reset' ? el.querySelector('.t-reset') : name ? el.querySelector(`[data-btn="${name}"]`) : null;
+      if (t) t.classList.add('teach');
+    },
     ensureTilt,
     refreshTiltLook,
     get tiltActive() { return tiltActive(); },

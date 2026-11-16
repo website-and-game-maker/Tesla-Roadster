@@ -79,7 +79,7 @@ export class HopRace extends Race {
     this.buildRings();
     g.ui.hud.setMode && g.ui.hud.setMode('flight');
     if (this.kind === 'tutorial') this.showTutorial();
-    this.coach = !this.online && !g.profile.coached && this.kind !== 'tutorial' ? new Coach(this, 'hop') : null;
+    this.coach = Coach.wanted(g, this) ? new Coach(this, 'hop') : null;
   }
 
   /** Metres along the road to the player's next ring. */
@@ -518,7 +518,7 @@ export class HopRace extends Race {
     super.finishCar(c);
     if (c.isPlayer && this.kind === 'tutorial') {
       this.message = 'NICE FLYING!';
-      this.game.profile.tutorialDone = true; this.game.profile.coached = true; this.game.save();
+      this.game.profile.tutorialDone = true; this.game.profile.coached = true; Coach.learnFromTutorial(this.game.profile); this.game.save();
       const t = this.game.ui.tutorial; t && t.complete && t.complete();
     }
   }
