@@ -674,7 +674,7 @@ export class HopRace extends Race {
     const p = this.player, order = this.order();
     this.game.onRaceEnd({
       type: this.kind, position: order.indexOf(p) + 1, racers: this.cars.length,
-      bestLap: p.bestLap, totalTime: p.finishTime, targets: this.targets, driftScore: 0, penalty: this.penalty,
+      bestLap: p.bestLap, totalTime: p.finishTime, targets: this.targets, driftScore: 0, penalty: this.penalty, ringBonus: this.bonus,
       rings: p.hits || 0,
       dnf: !p.finished,
       table: order.map((c, i) => ({ pos: i + 1, name: c.name, me: c.isPlayer, time: c.finished ? fmtT(c.finishTime) : '+' + Math.max(1, Math.round((this.track.length * this.cfg.laps - c.progress) / Math.max(c.v.speed, 20))) + 's' })),
