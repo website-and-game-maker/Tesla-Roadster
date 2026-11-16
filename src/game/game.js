@@ -394,6 +394,9 @@ export class Game {
     if (res.type === 'race' || res.type === 'elim') lines.unshift(['Position', `${res.position} / ${res.racers}`]);
     if (res.bestLap) lines.push(['Best lap', fmt(res.bestLap)]);
     if (res.totalTime) lines.push(['Total time', fmt(res.totalTime)]);
+    // rings are an optional reward: each one threaded pays out at the end
+    if (res.rings != null) { const rc = res.rings * 25; credits += rc; lines.push(['Rings', `${res.rings} (+${rc} credits)`]); }
+    if (res.ringBonus) lines.push(['Ring bonus', `−${res.ringBonus.toFixed(1)}s`]);
     if (res.type === 'timeattack') lines.push(['Targets', res.targets.map((t) => t.toFixed(2)).join(' / ')]);
     if (res.type === 'drift') { lines.push(['Drift score', res.driftScore.toLocaleString()]); lines.push(['Targets', res.targets.map((t) => t.toLocaleString()).join(' / ')]); }
     P.stats.drift = Math.max(P.stats.drift, res.driftScore || 0);
