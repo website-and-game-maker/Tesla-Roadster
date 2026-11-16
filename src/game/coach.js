@@ -16,13 +16,13 @@ const HOP_STEPS = [
     keys: (k) => `${k.drive} + ${k.steer}`,
     done: (r) => r.player.v.speed > 18 },
   { id: 'jet', when: (r) => r.ringAhead && r.ringAhead() < 170,
-    text: (k, t) => t ? 'Ring ahead! Hold JET at the blue marks on the road to hop through it.' : `Ring ahead! Hold ${k.jet} at the blue marks on the road to fire the jets and hop through it.`,
+    text: (k, t) => t ? 'Bonus ring ahead! Hold JET at the blue marks on the road to hop up to it.' : `Bonus ring ahead! Hold ${k.jet} at the blue marks on the road to fire the jets and hop up to it.`,
     keys: (k) => k.jet,
     done: (r, c) => c.ring != null },
   { id: 'rings', when: () => true,
     text: (k, t, c) => c.ring
-      ? 'Nice! Every ring refills your jets. String them together for a combo.'
-      : 'Missed it? No need to turn back: the next ring counts. Fire where JET is painted on the road.',
+      ? 'Nice! Rings are a bonus: jet fuel and a burst of speed. They are small on purpose.'
+      : 'Rings are optional rewards: jet fuel and a burst of speed. Miss one and nothing is lost.',
     keys: () => '',
     done: (r, c) => c.stepT > 4.5 },
 ];

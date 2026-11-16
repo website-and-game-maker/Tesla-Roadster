@@ -11,20 +11,27 @@ import * as THREE from 'three';
 import { Coach } from './coach.js';
 import { Race } from './race.js';
 import { AIDriver } from './ai.js';
+import { dustFor } from './effects.js';
 import { collideCars } from '../physics/vehicle.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const AIR_ENV = { grip: 0.55, rolling: 0 };
+const FENCE_H = 16;      // the track's energy fence stops you up to this height: leaving takes a deliberate full burn
+const STEP_UP = 0.5;     // off the track, ground rising more than this in one step is a wall (cliff, rock, building)
+const DROP = 0.4;        // ...and ground falling away more than this means you are in the air
 const TANK_BURN = 1.4;   // seconds of full burn per tank
 const TANK_FILL = 2.6;   // seconds on the road to refill from empty
 const RING_FUEL = 0.45;  // tank refill per ring
+const RING_R = 4;        // ring radius: a reward you have to aim for, not a gate you are owed
+const RING_KICK = 7;     // m/s shove forward for threading a ring
+const RING_BONUS = 1.5;  // Ring Trial: seconds taken off the clock per ring
 const IDLE = { steer: 0, throttle: 0, brake: 0, handbrake: false, boost: false };
 const fmtT = (t) => { if (t == null) return '--'; const m = Math.floor(t / 60); return `${m}:${(t - m * 60).toFixed(3).padStart(6, '0')}`; };
 
 const TUTORIAL = [
   { id: 'drive', text: 'Hold W (or GO) to drive. Steer with A / D or ← / →.', key: 'W', touch: 'Hold GO, and drag on the left to steer.', done: (r) => r.player.v.speed > 22 },
   { id: 'jet', text: 'Fire the jets: hold Space to hop. A tap is a short hop, holding flies higher.', key: 'Space', touch: 'Hold JET to hop. A tap is a short hop.', done: (r) => r.tut.hops >= 2 },
-  { id: 'ring', text: 'Jet through a glowing ring. Rings refill your tank. Follow the arrow if you lose it.', key: 'Space', touch: 'Hold JET as you reach the ring.', done: (r) => r.tut.rings >= 1 },
+  { id: 'ring', text: 'Jet through a glowing ring. Rings are a bonus: jet fuel and a burst of speed.', key: 'Space', touch: 'Hold JET as you reach the ring.', done: (r) => r.tut.rings >= 1 },
   { id: 'glide', text: 'The tank is small. When it runs dry the wings glide you down. It refills on the road.', key: 'A D', touch: 'Steer while you glide.', done: (r) => r.tut.landings >= 3 },
   { id: 'boost', text: 'Overdrive: hold Shift on the road for a burst of speed.', key: 'Shift', touch: 'Hold ⚡ on the road.', done: (r) => r.tut.boostT > 0.8 },
   { id: 'lap', text: 'Finish the lap. You\'re ready to race!', key: '', touch: '', done: (r) => r.player.finished },
@@ -42,10 +49,11 @@ export class HopRace extends Race {
     super(game, { ...cfg, type: base, laps, opponents: kind === 'ringrace' ? cfg.opponents : 0 });
     this.kind = kind;
     this.isFlight = true;
-    this.penalty = 0;
+    this.penalty = 0; this.bonus = 0;
     this.tut = { step: 0, hops: 0, rings: 0, landings: 0, boostT: 0 };
     const wd = (game.worlds || []).find((w) => w.id === cfg.worldId);
     this.worldMode = wd && wd.modes && wd.modes.includes('hop') ? 'hop' : 'ground';
+    this.skyWorld = !!(wd && wd.modes && !wd.modes.includes('ground')); // road in the sky: off the road means falling
   }
 
   build() {
@@ -92,7 +100,7 @@ export class HopRace extends Race {
     if (Array.isArray(w.hopRings) && w.hopRings.length) {
       for (const r of w.hopRings) {
         const info = tr.locate(r.position.x, r.position.z, r.u != null ? Math.round(r.u * tr.n) % tr.n : -1, {});
-        rings.push({ dist: info.dist, lat: info.lat, position: r.position.clone(), tx: info.tx, tz: info.tz, radius: Math.max(r.radius || 6, 6) });
+        rings.push({ dist: info.dist, lat: info.lat, position: r.position.clone(), tx: info.tx, tz: info.tz, radius: this.kind === 'tutorial' ? 6 : Math.min(r.radius || RING_R, RING_R + 0.5) });
       }
     } else {
       // above straighter stretches, every ~300 m, 4.5-10 m over the road
@@ -112,8 +120,8 @@ export class HopRace extends Race {
         // (bridges, hairpins) would otherwise pin the ring to the wrong stretch
         const lat = (rnd() - 0.5) * tr.roadHalf * 0.6;
         const p = tr.pointAt(d, lat, {});
-        const h = 4.5 + rnd() * 5.5;
-        rings.push({ dist: d, lat, position: new THREE.Vector3(p.x, p.y + h, p.z), tx: Math.sin(p.yaw), tz: Math.cos(p.yaw), radius: 6 });
+        const h = 6 + rnd() * 6;
+        rings.push({ dist: d, lat, position: new THREE.Vector3(p.x, p.y + h, p.z), tx: Math.sin(p.yaw), tz: Math.cos(p.yaw), radius: this.kind === 'tutorial' ? 6 : RING_R }); // roomy while learning
       }
     }
     rings.sort((a, b) => a.dist - b.dist);
@@ -153,9 +161,14 @@ export class HopRace extends Race {
     for (let k = 0; k < 3; k++) { const y0 = 150 + k * 120; x.globalAlpha = 1 - k * 0.25; x.beginPath(); x.moveTo(36, y0); x.lineTo(128, y0 - 80); x.lineTo(220, y0); x.stroke(); }
     x.globalAlpha = 1; x.fillStyle = '#eaffff'; x.font = '900 86px system-ui, sans-serif'; x.textAlign = 'center'; x.fillText('JET', 128, 492);
     const mt = new THREE.CanvasTexture(cv); mt.anisotropy = 4;
-    this.jetMarkMat = new THREE.MeshBasicMaterial({ map: mt, transparent: true, depthWrite: false, opacity: 0.9, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
-    const mg = new THREE.PlaneGeometry(5, 10); mg.rotateX(-Math.PI / 2); mg.rotateY(Math.PI); // lies flat, chevrons point along +z
+    this.jetMarkMat = new THREE.MeshBasicMaterial({ map: mt, transparent: true, depthWrite: false, opacity: 1, fog: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+    // long, because you see it at a grazing angle from the driver's seat
+    const mg = new THREE.PlaneGeometry(9, 30); mg.rotateX(-Math.PI / 2); mg.rotateY(Math.PI); // lies flat, chevrons point along +z
     this.jetMark = new THREE.Mesh(mg, this.jetMarkMat); this.jetMark.renderOrder = 2; this.jetMark.visible = false;
+    // two light posts at the road edges make the take-off line readable from far away
+    const postGeo = new THREE.CylinderGeometry(0.14, 0.14, 3.2, 8); postGeo.translate(0, 1.6, 0);
+    const postMat = new THREE.MeshBasicMaterial({ color: 0x35e8ff, transparent: true, opacity: 0.9, fog: false });
+    for (const sx of [-1, 1]) { const post = new THREE.Mesh(postGeo, postMat); post.position.set(sx * (this.track.roadHalf + 0.4), 0, 0); this.jetMark.add(post); }
     this.scene.add(this.jetMark);
     this.player.hits = 0;
     this.updateRingVisuals();
@@ -179,7 +192,7 @@ export class HopRace extends Race {
       const r = this.rings[next];
       // far enough back to climb to the ring at racing speed
       const d = r.dist - (42 + (r.position.y - this.track.pointAt(r.dist, 0, {}).y) * 2.2);
-      const m = this.track.pointAt(d, r.lat, {});
+      const m = this.track.pointAt(d, 0, {});
       this.jetMark.visible = !this.gapAt(d);
       this.jetMark.position.set(m.x, (this.groundAt ? this.groundAt(m.x, m.z) : m.y) + 0.05, m.z);
       this.jetMark.rotation.y = m.yaw;
@@ -199,10 +212,13 @@ export class HopRace extends Race {
       if (off > moved) continue;
       const v = c.v;
       const dx = v.x - r.position.x, dy = (v.y + 0.6) - r.position.y, dz = v.z - r.position.z;
-      const hit = Math.hypot(dx, dy, dz) <= r.radius * 1.25; // forgiving: clipping the rim counts
+      const hit = Math.hypot(dx, dy, dz) <= r.radius; // you have to actually thread it
       if (hit) {
+        // the reward: jet fuel, Overdrive charge and a shove forward
         c.jet.fuel = Math.min(1, c.jet.fuel + RING_FUEL);
-        v.boost = Math.min(v.stats.boostCap, v.boost + 0.12);
+        v.boost = Math.min(v.stats.boostCap, v.boost + 0.2);
+        const kick = Math.min(RING_KICK, Math.max(0, v.stats.vmax * 1.2 - v.speed));
+        v.vx += Math.sin(v.yaw) * kick; v.vz += Math.cos(v.yaw) * kick;
       }
       if (c.isPlayer) this.playerRing(i, hit);
     }
@@ -213,18 +229,16 @@ export class HopRace extends Race {
     if (this.coach) this.coach.event('ring', hit);
     p.ringDone = p.ringDone || new Set();
     if (hit) {
+      if (p.ringDone.has(i)) return; // already counted this lap
       p.ringDone.add(i); p.hits++;
       p.combo = (p.comboT > 0 ? (p.combo || 0) : 0) + 1; p.comboT = 9;
       g.audio.ui('ring', p.combo);
-      this.flash(p.combo >= 3 ? `RING COMBO ×${p.combo}` : 'JETS REFILLED');
+      if (this.kind === 'ringtrial' && this.state === 'race') { this.bonus += RING_BONUS; this.raceTime = Math.max(p.lapStart, this.raceTime - RING_BONUS); }
+      this.flash(p.combo >= 3 ? `RING COMBO ×${p.combo}` : this.kind === 'ringtrial' ? `RING · −${RING_BONUS}s` : 'RING · JETS + SPEED');
       this.ringFlash = { ring: this.rings[i], t: 0.5 };
       this.tut.rings++;
       this.vibrate(25);
-    } else {
-      p.combo = 0;
-      if (this.kind === 'ringtrial' && this.state === 'race') { this.penalty += 2; this.raceTime += 2; this.flash('MISSED +2s · KEEP GOING'); g.audio.ui('back'); }
-      else if (this.state === 'race') this.flash('MISSED · NEXT RING AHEAD'); // never a reason to turn back
-    }
+    } else p.combo = 0; // rings are a bonus: missing one costs nothing and nobody nags you about it
   }
 
   // ------------------------------------------------------------------ physics
@@ -264,17 +278,8 @@ export class HopRace extends Race {
       tr.locate(v.x, v.z, J.air ? -1 : c.info.i, c.info);
       this.jetStep(c, racing && jet, dt);
       if (c.respawned) { c.respawned = false; continue; }
-      // barriers only matter near the road surface: high enough, you fly over them
-      const lim = tr.wallHalf - 1.0;
-      const alt = v.y - c.info.y;
-      if (Math.abs(c.info.lat) > lim && alt < 2.2) {
-        if (!J.air && Math.abs(c.info.lat) > lim + 8) this.respawn(c, 'OFF COURSE');
-        else {
-          const s = Math.sign(c.info.lat);
-          v.collideWall(s * c.info.nx, s * c.info.nz, Math.abs(c.info.lat) - lim);
-          tr.locate(v.x, v.z, c.info.i, c.info);
-        }
-      }
+      this.fence(c, dt, racing);
+      if (c.respawned) { c.respawned = false; continue; }
       if (racing) { this.laps(c); this.checkRings(c); }
     }
     // car-to-car: only when at about the same height
@@ -290,6 +295,89 @@ export class HopRace extends Race {
     if (pv.boosting) this.tut.boostT += dt;
   }
 
+  /**
+   * The track corridor. Rails and an energy fence above them keep cars in up to FENCE_H, on the
+   * ground and in the air, so a hop that drifts wide slides along the fence instead of dumping
+   * you in the scenery. Clear it with a full burn and you are off track for real: you drive on
+   * the terrain (see terrainStep), the fence lets you back in from outside, and in a race you
+   * have a few seconds before being put back.
+   */
+  fence(c, dt, racing) {
+    const tr = this.track, v = c.v, J = c.jet;
+    const lim = tr.wallHalf - 1.0, a = Math.abs(c.info.lat), alt = v.y - c.info.y;
+    if (!c.outside) {
+      if (a <= lim) return;
+      if (alt >= FENCE_H) { if (a > lim + 1.5) { c.outside = true; c.outT = 0; } return; }
+      const sgn = Math.sign(c.info.lat), nx = sgn * c.info.nx, nz = sgn * c.info.nz;
+      if (J.air && alt > 1.2) {
+        // the fence: push back and slide along it, no crash
+        const depth = a - lim, vn = v.vx * nx + v.vz * nz;
+        v.x -= nx * depth; v.z -= nz * depth;
+        if (vn > 0) { v.vx -= 1.15 * vn * nx; v.vz -= 1.15 * vn * nz; if (c.isPlayer && vn > 1.5) this.fenceHit(c, nx, nz); }
+      } else v.collideWall(nx, nz, a - lim);
+      tr.locate(v.x, v.z, c.info.i, c.info);
+      return;
+    }
+    // outside
+    if (a < lim - 0.5) { c.outside = false; c.outT = 0; return; }
+    if (!racing) return;
+    c.outT += dt;
+    // The player is never pulled back: getting home is their job (or one press of reset). AI that strays is tidied up.
+    if (!c.isPlayer && c.outT > 2.5) this.respawn(c, '');
+  }
+
+  /** A short flash of the fence where the player touched it. */
+  fenceHit(c, nx, nz) {
+    if (!this.fenceFx) {
+      const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
+      const x = cv.getContext('2d'), gr = x.createRadialGradient(64, 64, 4, 64, 64, 64);
+      gr.addColorStop(0, 'rgba(120,240,255,.9)'); gr.addColorStop(0.5, 'rgba(53,232,255,.35)'); gr.addColorStop(1, 'rgba(53,232,255,0)');
+      x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
+      x.strokeStyle = 'rgba(200,250,255,.55)'; x.lineWidth = 2;
+      for (let i = 0; i <= 128; i += 16) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 128); x.moveTo(0, i); x.lineTo(128, i); x.stroke(); }
+      x.globalCompositeOperation = 'destination-in'; x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
+      const mat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, opacity: 0 });
+      this.fenceFx = new THREE.Mesh(new THREE.PlaneGeometry(16, 12), mat);
+      this.scene.add(this.fenceFx);
+    }
+    const v = c.v, f = this.fenceFx;
+    f.position.set(v.x + nx * 1.2, v.y + 0.8, v.z + nz * 1.2);
+    f.rotation.set(0, Math.atan2(nx, nz), 0);
+    f.material.opacity = 1;
+    if (this.fenceT > 0.25) return; // one message per brush
+    this.fenceT = 1.2;
+    this.flash('TRACK BARRIER'); this.game.audio.ui('back'); this.vibrate(25);
+    this.shake = Math.min(1, this.shake + 0.15);
+  }
+
+  /**
+   * Driving on open terrain outside the fence. Returns false if the move was blocked.
+   * Without this the car was glued to whatever height the terrain had under it: it snapped up
+   * cliffs and down drops, which is what made off-track driving look broken.
+   */
+  terrainStep(c, gr, dt) {
+    const v = c.v, J = c.jet, rise = gr - v.y;
+    if (rise > STEP_UP) {
+      // too steep to climb: stop against it and bounce back a little
+      const sp = v.speed;
+      v.x -= v.vx * dt; v.z -= v.vz * dt;
+      v.vx *= -0.25; v.vz *= -0.25; v.yawRate *= 0.5;
+      if (c.isPlayer && sp > 6) { v.impact = Math.max(v.impact, sp * 0.4); }
+      this.track.locate(v.x, v.z, -1, c.info);
+      return false;
+    }
+    if (rise < -DROP) { J.air = true; J.airT = 0; J.vy = Math.min(J.vy, 0); return true; } // drove off an edge: fall, don't teleport
+    // hills: climbing costs speed, descending gives it back
+    const sp = v.speed;
+    if (sp > 0.5) {
+      const grade = clamp(rise / (sp * dt), -0.6, 0.6), dv = -this.g * grade * dt;
+      const k = Math.max(0, (sp + dv) / sp);
+      v.vx *= k; v.vz *= k;
+    }
+    v.y = gr;
+    return true;
+  }
+
   jetStep(c, wantJet, dt) {
     const v = c.v, J = c.jet, gr = this.groundUnder(c);
     J.firing = wantJet && J.fuel > 0;
@@ -297,7 +385,8 @@ export class HopRace extends Race {
       J.fuel = Math.max(0, J.fuel - dt / TANK_BURN);
       if (!J.air) {
         J.air = true; J.airT = 0; v.y = gr + 0.05; J.vy = Math.max(J.vy, 2.5);
-        if (c.isPlayer) { this.tut.hops++; this.game.audio.ui('transform'); }
+        if (c.isPlayer) this.tut.hops++;
+        this.groundBlast(c, 0.6);
       }
       J.vy += this.jetUp * dt;
       // the rear thrusters also push forward a little
@@ -312,19 +401,37 @@ export class HopRace extends Race {
       if (v.y <= gr) {
         const impact = -J.vy;
         v.y = gr; J.vy = 0; J.air = false;
+        this.surfaceEnv(c); // what we landed on (sets v.surface, c.offRoad)
+        if (impact > 4) this.groundBlast(c, Math.min(1, impact / 20));
         if (c.isPlayer) {
           this.tut.landings++;
+          this.game.audio.land && this.game.audio.land(impact, v.surface);
           if (impact > 22) { v.vx *= 0.55; v.vz *= 0.55; this.shake = 1; this.flash('HARD LANDING'); this.game.audio.collision(impact); this.vibrate(90); }
           else if (impact > 7) { this.shake = Math.min(1, this.shake + impact * 0.03); this.vibrate(30); }
         } else if (impact > 22) { v.vx *= 0.55; v.vz *= 0.55; }
-      } else if (v.y < c.info.y - 12) {
+      } else if (v.y < c.info.y - 12 && (!c.outside || this.skyWorld)) {
         this.respawn(c, 'FELL! Respawning');
       }
     } else {
-      v.y = gr;
-      J.fuel = Math.min(1, J.fuel + dt / TANK_FILL);
+      if (c.outside) this.terrainStep(c, gr, dt); else v.y = gr;
+      // jets refill anywhere on the ground, but slower off the road
+      J.fuel = Math.min(1, J.fuel + dt / (TANK_FILL * (c.outside || c.offRoad ? 1.6 : 1)));
     }
     v.vy = J.vy;
+    v.airborne = J.air; v.jetFiring = J.firing; // read by Race's audio and tyre effects
+  }
+
+  /** A ring of dust (or road grit) kicked out from under the car: take-offs and landings. */
+  groundBlast(c, strength) {
+    const q = (this.game.quality && this.game.quality.preset) || {}, d = this.dust;
+    if (!d || (q.particles ?? 1) < 0.3) return;
+    const v = c.v, dust = c.offRoad && dustFor(v.surface, this.world);
+    const color = dust ? (this.dustColor ?? dust.color) : 0xc9c6c0, n = Math.round((6 + 14 * strength) * (q.particles ?? 1));
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 3 + Math.random() * 6 * strength;
+      d.emit(v.x + Math.sin(a) * 1.2, v.y + 0.2, v.z + Math.cos(a) * 1.2, Math.sin(a) * sp + v.vx * 0.3, 0.6 + Math.random() * 1.5, Math.cos(a) * sp + v.vz * 0.3,
+        { color, size: 0.6 + Math.random() * 0.6, life: 0.7 + Math.random() * 0.6, gravity: 1.5, grow: 3 });
+    }
   }
 
   /** AI: line up under the next ring once it is close (lower skill = looser line). */
@@ -365,8 +472,8 @@ export class HopRace extends Race {
   }
 
   /** Back on the road, far enough before any gap to get a run-up. */
-  resetCar(c) {
-    let d = c.info.dist;
+  resetCar(c, dist) {
+    let d = dist ?? c.info.dist;
     for (let back = 0; back < 600; back += 5) {
       let clear = true;
       for (let a = -10; a <= 70 && clear; a += 5) if (this.gapAt(d - back + a)) clear = false;
@@ -377,14 +484,27 @@ export class HopRace extends Race {
     this.track.locate(p.x, p.z, -1, c.info);
   }
 
-  respawn(c, msg) {
-    this.resetCar(c);
+  respawn(c, msg, dist) {
+    this.resetCar(c, dist);
     const J = c.jet; J.air = false; J.vy = 0; J.firing = false; J.fuel = Math.max(J.fuel, 0.6);
+    c.outside = false; c.outT = 0;
     c.v.y = this.groundUnder(c);
     c.prevD = c.info.dist;
     c.respawned = true;
     if (c.isPlayer) { this.flash(msg); this.shake = 0.6; this.vibrate(100); }
   }
+
+  /** Back on the road with the jets reset (R, ↺, or automatically). */
+  recover(msg = 'BACK ON THE ROAD') {
+    if (this.state !== 'race' || this.player.finished) return;
+    this.respawn(this.player, msg);
+    this.player.prevDist = this.player.info.dist;
+    this.player.wrongT = 0; this.lostT = 0; this.stuckT = 0;
+  }
+
+  manualReset() { this.recover(); }
+
+  canAutoReset() { return !this.player.jet.air; }
 
   laps(c) {
     // the tutorial lap only ends once the steps before it are done
@@ -428,6 +548,20 @@ export class HopRace extends Race {
     }
     if (p.comboT > 0) p.comboT -= dt;
     super.postUpdate(dt, inp);
+    // jets: the burn and its cues (ignite, low, empty, refill, full) come from the audio engine
+    const PJ = p.jet;
+    if (PJ && g.audio.updateJet) {
+      g.audio.updateJet({ firing: PJ.firing, fuel: PJ.fuel, wanted: this.state === 'race' && !this.autopilot && !!(inp && inp.handbrake), airborne: PJ.air, speed: p.v.speed }, dt);
+    }
+    // exhaust: hot grey smoke streaming back from the thrusters while they burn
+    const qp = (g.quality && g.quality.preset && g.quality.preset.particles) ?? 1;
+    if (this.dust && qp >= 0.3) for (const c of this.cars) {
+      if (c.out || !c.jet || !c.jet.firing || Math.random() > qp * 0.9) continue;
+      const v = c.v, fx = Math.sin(v.yaw), fz = Math.cos(v.yaw), s = Math.random() < 0.5 ? 1 : -1;
+      const x = v.x - fx * 2.1 - fz * 0.5 * s, z = v.z - fz * 2.1 + fx * 0.5 * s;
+      this.dust.emit(x, v.y + 0.55, z, v.vx * 0.4 - fx * 6 + (Math.random() - 0.5), -2 - Math.random() * 2, v.vz * 0.4 - fz * 6 + (Math.random() - 0.5),
+        { color: Math.random() < 0.3 ? 0x9fc6ff : 0x8c8c90, size: 0.45 + Math.random() * 0.3, life: 0.5 + Math.random() * 0.4, gravity: -1.5, grow: 4 });
+    }
     for (const c of this.cars) {
       if (c.out || !c.jet) continue;
       const J = c.jet, v = c.v, o = c.model.object, m = c.model;
@@ -437,8 +571,20 @@ export class HopRace extends Race {
       if (J.air) {
         const sp = Math.max(v.speed, 5);
         o.rotation.set(clamp(-Math.atan2(J.vy, sp) * 0.7, -0.5, 0.5), v.yaw, clamp(-v.yawRate * 0.25, -0.5, 0.5), 'YXZ');
-      }
+        c.tiltX = o.rotation.x; c.tiltZ = o.rotation.z;
+      } else if (c.outside && this.groundAt) {
+        // sit on the terrain: pitch and roll from the ground under the nose, tail and sides
+        const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw), G = this.groundAt;
+        const pitch = -Math.atan2(G(v.x + fx * 1.4, v.z + fz * 1.4) - G(v.x - fx * 1.4, v.z - fz * 1.4), 2.8);
+        const roll = Math.atan2(G(v.x - fz * 0.9, v.z + fx * 0.9) - G(v.x + fz * 0.9, v.z - fx * 0.9), 1.8);
+        const k = Math.min(1, dt * 10);
+        c.tiltX = (c.tiltX || 0) + (clamp(pitch, -0.6, 0.6) - (c.tiltX || 0)) * k;
+        c.tiltZ = (c.tiltZ || 0) + (clamp(roll, -0.6, 0.6) - (c.tiltZ || 0)) * k;
+        o.rotation.set(c.tiltX, v.yaw, c.tiltZ, 'YXZ');
+      } else { c.tiltX = 0; c.tiltZ = 0; }
     }
+    if (this.fenceT > 0) this.fenceT -= dt;
+    if (this.fenceFx && this.fenceFx.material.opacity > 0) this.fenceFx.material.opacity = Math.max(0, this.fenceFx.material.opacity - dt * 2.2);
     if (this.ringFlash) {
       this.ringFlash.t -= dt; const r = this.ringFlash.ring;
       r.mesh.scale.setScalar(r.radius * (1 + (0.5 - this.ringFlash.t) * 0.6));
@@ -477,10 +623,23 @@ export class HopRace extends Race {
     if (!r) return null;
     const v = r.position.clone().project(this.camera);
     const behind = v.z > 1;
-    if (!behind && Math.abs(v.x) < 0.85 && Math.abs(v.y) < 0.85) return null;
+    if (!behind && Math.abs(v.x) < 1 && Math.abs(v.y) < 1) return null; // on screen: the ring marker covers it
     let x = v.x, y = v.y; if (behind) { x = -x; y = -y; }
     const l = Math.hypot(x, y) || 1;
     return { x: x / l, y: y / l };
+  }
+
+  /** On-screen marker over the next ring: screen position (-1..1) and distance in metres. */
+  nextRingMark() {
+    const r = this.rings[this.nextRing ?? 0];
+    if (!r || this.state === 'intro') return null;
+    const v = this.player.v;
+    const dist = Math.hypot(r.position.x - v.x, r.position.y - v.y, r.position.z - v.z);
+    if (dist < 18) return null;
+    const s = r.position.clone(); s.y += r.radius * 1.25;
+    s.project(this.camera);
+    if (s.z > 1 || Math.abs(s.x) > 1 || Math.abs(s.y) > 1) return null;
+    return { x: s.x, y: s.y, dist: Math.round(dist) };
   }
 
   hudData() {
@@ -488,17 +647,19 @@ export class HopRace extends Race {
     const total = this.rings.length, hit = p.ringDone ? p.ringDone.size : 0;
     let extra = d.extra;
     if (this.kind === 'tutorial' && this.tutText) extra = this.tutText;
-    if (this.kind === 'ringtrial' && this.penalty) extra = `${extra}${extra ? ' · ' : ''}PENALTY +${this.penalty}s`;
+    if (this.kind === 'ringtrial' && this.bonus) extra = `${extra}${extra ? ' · ' : ''}RING BONUS −${this.bonus.toFixed(1)}s`;
     let note = d.note;
     if (!note && J.air && J.fuel <= 0.01) note = 'GLIDING';
     else if (!note && !J.air && J.fuel < 0.25) note = 'JETS REFILLING';
+    if (p.outside && this.state === 'race' && !note) note = 'OFF TRACK';
     return {
       ...d,
       mode: 'flight',
       airspeedKmh: d.speedKmh,
       altitude: Math.max(0, Math.round(v.y - this.groundUnder(p))),
-      rings: { hit, total },
+      rings: { hit, total, next: Math.min(total, (this.nextRing ?? 0) + 1) },
       nextRingDir: this.nextRingDir(),
+      nextRingMark: this.nextRingMark(),
       thrust: J.fuel, jets: J.fuel, jetFiring: J.firing, airborne: J.air,
       lapCount: this.kind === 'freeflight' ? 99 : d.lapCount,
       extra, note,
@@ -522,6 +683,8 @@ export class HopRace extends Race {
 
   dispose() {
     for (const r of this.rings || []) this.scene.remove(r.mesh, r.beam);
+    if (this.jetMark) this.scene.remove(this.jetMark);
+    if (this.fenceFx) this.scene.remove(this.fenceFx);
     super.dispose();
   }
 }

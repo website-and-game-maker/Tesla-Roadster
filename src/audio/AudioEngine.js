@@ -4,11 +4,14 @@
 //   const audio = new AudioEngine();
 //   audio.unlock();                       // on first click/tap/key
 //   audio.update({ speed, throttle, brake, slip, surface, boost }, dt); // every frame
+//   audio.updateJet({ firing, fuel, wanted }, dt);   // jet hops, every frame
+//   audio.land(impact, surface);                       // touching down after a hop
 //   audio.collision(impulse);  audio.ui('click');
 //   audio.music.play('race');  audio.music.setIntensity(0.8);
 //   audio.setVolume('music', 0.5);
 
-import { MotorSound } from './MotorSound.js';
+import { MotorSound, SURFACES, surfaceKey } from './MotorSound.js';
+import { JetSound } from './JetSound.js';
 import { FlightSound } from './FlightSound.js';
 import { Sfx } from './Sfx.js';
 import { MusicPlayer } from './Music.js';
@@ -141,7 +144,9 @@ export class AudioEngine {
   /**
    * Per-frame update for the player's car.
    * @param {{speed?:number, throttle?:number, brake?:number, slip?:number,
-   *          surface?:'asphalt'|'dirt'|'grass'|'snow'|'sand', boost?:boolean}} state
+   *          surface?:string, boost?:boolean, airborne?:boolean}} state
+   *   surface: 'asphalt'|'road'|'kerb'|'shoulder'|'dirt'|'gravel'|'grass'|'mud'|'snow'|'sand'|'ice'
+   *   (unknown names fall back to asphalt). airborne: wheels off the ground.
    * @param {number} dt seconds since last frame
    */
   update(state, dt = 1 / 60) {
@@ -149,6 +154,57 @@ export class AudioEngine {
     this._setMode('drive');
     this.motor.update(state);
     this.sfx.tickScrape(dt);
+    // Driving from smooth road onto loose ground kicks up a burst of it.
+    const key = surfaceKey(state && state.surface);
+    const speed = Math.abs((state && state.speed) || 0);
+    if (state && !state.airborne && this.lastSurface && key !== this.lastSurface && speed > 8) {
+      const surf = SURFACES[key];
+      if (surf.grit > 0.2 && SURFACES[this.lastSurface].grit < surf.grit) this.sfx.surfaceHit(surf, Math.min(1, speed / 40));
+    }
+    if (!state || !state.airborne) this.lastSurface = key;
+  }
+
+  /**
+   * Per-frame jet hop state, alongside update(). It plays the burn and fires
+   * the cues by itself: ignition, cut-off puff, low-tank blip, empty sputter,
+   * dry click, refill sweep (any jump in fuel, e.g. a ring) and tank-full.
+   * @param {{firing?:boolean, fuel?:number, wanted?:boolean, airborne?:boolean, speed?:number}} s
+   *   firing: jets burning this frame; fuel 0..1; wanted: the jet button is held
+   *   (so pressing it on an empty tank can click).
+   */
+  updateJet(s = {}, dt = 1 / 60) {
+    if (!this.ready) return;
+    if (!this.jet) {
+      this.jet = new JetSound(this.ctx, this.buses.engine, this.noise, { simple: this.quality === 'low' });
+      this.jet.setLevel(this.carActive ? 1 : 0, 0.01);
+      this.jetPrev = { firing: false, fuel: s.fuel == null ? 1 : s.fuel, wanted: false, armed: false };
+    }
+    const p = this.jetPrev, fuel = s.fuel == null ? 1 : s.fuel, firing = !!s.firing, wanted = !!s.wanted;
+    if (firing && !p.firing) { this.sfx.ui('jetIgnite'); this.duckMusic(0.2, 0.3); }
+    if (!firing && p.firing) {
+      if (fuel <= 0.001 && wanted) this.sfx.ui('jetEmpty');
+      else this.sfx.ui('jetCut');
+    }
+    if (firing && fuel < 0.25 && p.fuel >= 0.25) this.sfx.ui('jetLow');
+    if (wanted && !p.wanted && !firing && fuel <= 0.001) this.sfx.ui('jetDry');
+    if (fuel - p.fuel > 0.1) this.sfx.ui('jetRefill', fuel - p.fuel);
+    // "Ready" chime only after a real top-up from below half, not every frame at full.
+    if (fuel < 0.5) p.armed = true;
+    if (p.armed && fuel >= 0.999 && p.fuel < 0.999) { this.sfx.ui('jetFull'); p.armed = false; }
+    p.firing = firing; p.fuel = fuel; p.wanted = wanted;
+    this.jet.update(s, dt);
+  }
+
+  /**
+   * Landing after a hop. impact = downward speed in m/s (3 soft, 10 firm, 22+
+   * hard); surface as in update(). Returns 0..1 strength.
+   */
+  land(impact, surface) {
+    if (!this.ready) return 0;
+    const key = surfaceKey(surface);
+    const s = this.sfx.land(impact, SURFACES[key], key);
+    if (s > 0.6) this.duckMusic(0.3, 0.5);
+    return s;
   }
 
   /**
@@ -176,6 +232,7 @@ export class AudioEngine {
   _applyCarLevels(tc) {
     const on = this.carActive;
     this.motor.setLevel(on && this.mode !== 'flight' ? 1 : 0, tc);
+    if (this.jet) this.jet.setLevel(on ? 1 : 0, tc);
     if (this.flight) this.flight.setLevel(on && this.mode === 'flight' ? 1 : 0, tc);
   }
 
@@ -200,6 +257,7 @@ export class AudioEngine {
   /**
    * 'click'|'hover'|'confirm'|'back'|'error'|'countdown'|'go'|'checkpoint'|'lap'|'coin'|'combo'|'unlock'|'whoosh'
    * Flight: 'ring' (pass the combo count as arg), 'nearMiss', 'transform', 'stall'.
+   * Jets (updateJet() plays these by itself): 'jetIgnite'|'jetCut'|'jetLow'|'jetEmpty'|'jetDry'|'jetRefill'|'jetFull'.
    */
   ui(name, arg) {
     if (!this.ready) return;

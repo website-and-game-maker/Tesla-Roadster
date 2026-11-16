@@ -181,6 +181,13 @@ export class Sfx {
       case 'nearMiss': this._nearMiss(t); break;
       case 'transform': this._transform(t); break;
       case 'stall': this._stall(t); break;
+      case 'jetIgnite': this._jetIgnite(t); break;
+      case 'jetCut': this._jetCut(t); break;
+      case 'jetLow': this._jetLow(t); break;
+      case 'jetEmpty': this._jetEmpty(t); break;
+      case 'jetDry': this._jetDry(t); break;
+      case 'jetRefill': this._jetRefill(t, arg); break;
+      case 'jetFull': this._jetFull(t); break;
       default:
         break;
     }
@@ -271,6 +278,160 @@ export class Sfx {
     for (const dt of [0, 0.16]) {
       this._tone(t + dt, { freq: 1040, type: 'square', level: 0.08, attack: 0.004, decay: 0.1, out: this.uiOut });
       this._tone(t + dt, { freq: 1040, type: 'sine', level: 0.14, attack: 0.004, decay: 0.1, out: this.uiOut });
+    }
+  }
+
+  // ---- Jet hops ------------------------------------------------------------
+
+  // Ignition: an igniter tick, a deep "fwoomp" and a burst of flame noise that
+  // opens up as it lights. Short, because hops are short.
+  _jetIgnite(t) {
+    if (t - (this.lastIgnite || 0) < 0.12) return;
+    this.lastIgnite = t;
+    const ctx = this.ctx;
+    this._noise(t, { type: 'highpass', freq: 6000, level: 0.08, decay: 0.012 });
+    this._tone(t + 0.01, { freq: 95, to: 38, type: 'sine', level: 0.5, attack: 0.008, decay: 0.32 });
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const f = biquad(ctx, 'lowpass', 250, 1.2);
+    f.frequency.setValueAtTime(250, t);
+    f.frequency.exponentialRampToValueAtTime(3200, t + 0.09);
+    f.frequency.exponentialRampToValueAtTime(900, t + 0.4);
+    const g = gain(ctx, 0);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.42, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+    src.connect(f).connect(g).connect(this.sfxOut);
+    src.start(t, Math.random() * (this.noise.duration - 1));
+    src.stop(t + 0.5);
+  }
+
+  // Letting go: a soft puff as the flame chokes off.
+  _jetCut(t) {
+    if (t - (this.lastCut || 0) < 0.1) return;
+    this.lastCut = t;
+    this._noise(t, { type: 'lowpass', freq: 700, Q: 0.7, level: 0.12, attack: 0.004, decay: 0.16 });
+  }
+
+  // Tank under a quarter while burning: one short double blip, easy to ignore
+  // but enough to know you should save the rest.
+  _jetLow(t) {
+    if (t - (this.lastLow || 0) < 1.2) return;
+    this.lastLow = t;
+    const out = this.uiOut;
+    this._tone(t, { freq: 1320, type: 'sine', level: 0.09, attack: 0.003, decay: 0.07, out });
+    this._tone(t + 0.1, { freq: 1320, type: 'sine', level: 0.09, attack: 0.003, decay: 0.07, out });
+  }
+
+  // Running dry mid-burn: the flame coughs a few times and dies, then a low
+  // falling two-note "empty" cue.
+  _jetEmpty(t) {
+    if (t - (this.lastEmpty || 0) < 0.8) return;
+    this.lastEmpty = t;
+    [0, 0.07, 0.17, 0.3].forEach((dt, i) => {
+      const k = 1 - i * 0.22;
+      this._noise(t + dt, { type: 'lowpass', freq: 900 * k + 200, Q: 1, level: 0.3 * k, attack: 0.004, decay: 0.06 });
+      this._tone(t + dt, { freq: 70, to: 40, level: 0.25 * k, attack: 0.004, decay: 0.08 });
+    });
+    const out = this.uiOut;
+    this._tone(t + 0.32, { freq: mtof(67), type: 'triangle', level: 0.14, decay: 0.16, out });
+    this._tone(t + 0.48, { freq: mtof(60), type: 'triangle', level: 0.14, decay: 0.28, out });
+  }
+
+  // Pressing JET with an empty tank: a dry click and a little hiss, nothing more.
+  _jetDry(t) {
+    if (t - (this.lastDry || 0) < 0.35) return;
+    this.lastDry = t;
+    this._tone(t, { freq: 1900, to: 1100, type: 'square', level: 0.05, attack: 0.001, decay: 0.025 });
+    this._noise(t + 0.02, { type: 'highpass', freq: 3000, level: 0.06, attack: 0.01, decay: 0.12 });
+  }
+
+  // Fuel added (a ring): a rising charge sweep on top of the ring chime.
+  // amount 0..1 is how much went in; more fuel sweeps higher.
+  _jetRefill(t, amount = 0.45) {
+    const ctx = this.ctx;
+    const a = clamp(amount, 0.1, 1);
+    const top = 900 + 1400 * a;
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(280, t);
+    o.frequency.exponentialRampToValueAtTime(top, t + 0.28);
+    const g = gain(ctx, 0);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.1, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+    o.connect(g).connect(this.uiOut);
+    o.start(t); o.stop(t + 0.36);
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const f = biquad(ctx, 'bandpass', 600, 2);
+    f.frequency.setValueAtTime(600, t);
+    f.frequency.exponentialRampToValueAtTime(top * 3, t + 0.28);
+    const ng = gain(ctx, 0);
+    ng.gain.setValueAtTime(0.0001, t);
+    ng.gain.exponentialRampToValueAtTime(0.08, t + 0.08);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+    src.connect(f).connect(ng).connect(this.uiOut);
+    src.start(t, Math.random() * (this.noise.duration - 1));
+    src.stop(t + 0.35);
+  }
+
+  // Tank back to full: a quiet two-note "ready".
+  _jetFull(t) {
+    if (t - (this.lastFull || 0) < 1.5) return;
+    this.lastFull = t;
+    const out = this.uiOut;
+    this._tone(t, { freq: mtof(84), type: 'sine', level: 0.08, decay: 0.12, out, verb: 0.2 });
+    this._tone(t + 0.08, { freq: mtof(91), type: 'sine', level: 0.08, decay: 0.3, out, verb: 0.3 });
+  }
+
+  // ---- Landings and surfaces -------------------------------------------------
+
+  /**
+   * Touching down after a hop. impact = downward speed in m/s (3 soft, 10 firm,
+   * 22+ hard). surface is a SURFACES key. Returns 0..1 strength.
+   */
+  land(impact, surf, key = 'asphalt') {
+    const t = this.ctx.currentTime + 0.005;
+    const s = clamp((impact - 1) / 22);
+    if (s <= 0.01) return 0;
+    if (t - (this.lastLand || 0) < 0.15) return 0;
+    this.lastLand = t;
+    // Suspension bottoming out: a falling thump and a short metal clunk.
+    this._tone(t, { freq: 105 - 30 * s, to: 36, level: 0.25 + 0.55 * s, attack: 0.004, decay: 0.14 + 0.3 * s });
+    this._noise(t, { freq: 1600, Q: 1.4, level: 0.05 + 0.14 * s, decay: 0.04 + 0.06 * s });
+    if (s > 0.35) this._tone(t + 0.035, { freq: 82, to: 44, level: 0.2 * s, decay: 0.12 }); // rebound
+    // What the tires land on.
+    if (key === 'asphalt' || key === 'kerb') {
+      // Tire chirp: spinning tires meet the road.
+      this._noise(t + 0.01, { freq: surf.skidHz, Q: 4, level: 0.06 + 0.16 * s, attack: 0.003, decay: 0.07 + 0.08 * s });
+      this._tone(t + 0.01, { freq: 900, to: 760, type: 'sawtooth', level: 0.015 + 0.03 * s, decay: 0.08 });
+      if (key === 'kerb') this._tone(t + 0.06, { freq: 90, to: 50, level: 0.2 * s + 0.08, decay: 0.08 });
+    } else if (key === 'ice') {
+      this._noise(t, { type: 'highpass', freq: 4500, level: 0.04 + 0.08 * s, decay: 0.05 });
+    } else {
+      this.surfaceHit(surf, 0.3 + 0.7 * s);
+    }
+    return s;
+  }
+
+  /**
+   * A burst of the surface's own material: stones and dirt kicked up when
+   * landing on it or driving onto it. amount 0..1.
+   */
+  surfaceHit(surf, amount = 0.5) {
+    const t = this.ctx.currentTime + 0.005;
+    const a = clamp(amount);
+    const grains = Math.round(3 + 9 * a * surf.grit);
+    // Soft body: the tires sinking in (grass, mud, snow, sand).
+    this._noise(t, { type: 'lowpass', freq: 380 + surf.rollHz * 0.4, Q: 0.7, level: 0.08 + 0.18 * a, attack: 0.01, decay: 0.12 + 0.12 * a });
+    // Grit: many tiny clicks spread over a fraction of a second.
+    for (let i = 0; i < grains; i++) {
+      const dt = Math.random() * (0.08 + 0.18 * a);
+      this._noise(t + dt, {
+        freq: surf.gritHz * (0.7 + Math.random() * 0.8), Q: 3, level: (0.02 + 0.06 * a) * (0.5 + Math.random()),
+        attack: 0.001, decay: 0.012 + Math.random() * 0.03,
+      });
     }
   }
 }
