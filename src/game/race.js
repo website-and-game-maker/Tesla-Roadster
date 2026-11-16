@@ -364,11 +364,11 @@ export class Race {
   recover(msg = 'BACK ON THE ROAD') {
     if (this.state !== 'race' || this.player.finished) return;
     this.resetCar(this.player);
-    this.player.wrongT = 0; this.lostT = 0; this.stuckT = 0;
+    this.player.wrongT = 0; this.lostT = 0;
     this.flash(msg);
   }
 
-  /** R, gamepad LB/View, or the phone ↺ button. Fly mode overrides this to retry a missed ring. */
+  /** R, gamepad LB/View, or the phone ↺ button. */
   manualReset() { this.recover(); }
 
   /** What to press to get back on the road, for the device in use. */
@@ -376,9 +376,6 @@ export class Race {
     const d = this.game.input.lastDevice;
     return d === 'touch' ? 'TAP ↺' : d === 'gamepad' ? 'PRESS LB' : 'PRESS R';
   }
-
-  /** Can the car be auto-reset right now? (Fly mode says no while airborne.) */
-  canAutoReset() { return true; }
 
   /** Sharp corner coming up at this speed? (used by the first-race coach) */
   cornerAhead() {
@@ -402,13 +399,10 @@ export class Race {
     if (along < -4) this.player.wrongT += dt; else this.player.wrongT = 0;
     // lost = pointing backwards and going nowhere useful (spun, wedged on a wall, creeping back for a ring)
     if (this.state === 'race' && !this.player.finished && facing < -0.25 && along < 6) this.lostT = (this.lostT || 0) + dt; else this.lostT = 0;
-    // pushing the pedals but going nowhere (nosed into a wall, beached on a kerb)
-    const pushing = inp && (inp.throttle > 0.3 || inp.brake > 0.3);
-    this.stuckT = this.state === 'race' && !this.player.finished && pushing && pv.speed < 2 ? (this.stuckT || 0) + dt : Math.max(0, (this.stuckT || 0) - dt * 2);
-    if (this.canAutoReset()) {
-      if (this.player.wrongT > 3.5 || this.lostT > 5) this.recover('TURNED YOU AROUND');
-      else if (this.stuckT > 3.5) this.recover('STUCK · BACK ON THE ROAD');
-    }
+    // No automatic jump back: warn, and say how to reset. The player decides.
+    const lost = this.player.wrongT > 2.5 || this.lostT > 3.5;
+    if (lost && !this.lostHinted) { this.lostHinted = true; this.flash(`WRONG WAY · ${this.resetHint()} TO TURN AROUND`); }
+    if (!lost) this.lostHinted = false;
 
     // off the road: rumble, and say why the car is slow
     const off = this.player.offRoad && this.player.v.grounded !== false && !(this.player.jet && this.player.jet.air);
@@ -542,7 +536,7 @@ export class Race {
       boost: v.boost / v.stats.boostCap, boosting: v.boosting, battery: v.boost / v.stats.boostCap,
       message: this.message, note: this.note || (this.offT > 0.4 ? 'OFF ROAD' : ''),
       driftScore: type === 'drift' || d.score > 0 || d.chain > 0 ? d.score : 0, driftChain: d.chain, driftMult: d.mult,
-      wrongWay: p.wrongT > 1.2,
+      wrongWay: p.wrongT > 1.2 || this.lostT > 2,
       ghostDelta: this.ghostDelta,
       fps: this.game.quality.fps, qualityLabel: this.game.quality.preset.name,
       minimap: { trackPoints: this.mapPts, player: { x: v.x, z: v.z, rot: v.yaw }, others },

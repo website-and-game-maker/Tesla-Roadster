@@ -34,7 +34,7 @@ export function createHUD(root, getSettings) {
         <div class="h-bar h-batt"><label>BATTERY</label><div><i></i></div></div>
       </div>
     </div>
-    <div class="h-rings"><span>NEXT RING</span><b class="h-ring-n">-</b><i>/</i><b class="h-ring-t">-</b></div>
+    <div class="h-rings"><span>RINGS</span><b class="h-ring-n">-</b><i>/</i><b class="h-ring-t">-</b></div>
     <div class="h-alt"><span>ALT</span><b class="h-alt-v">0</b><em class="h-alt-u">m</em><i class="h-vs"></i></div>
     <div class="h-arrow"><i></i></div>
     <div class="h-mark"><i></i><b class="h-mark-d"></b></div>
@@ -179,8 +179,8 @@ export function createHUD(root, getSettings) {
           r.vs.className = 'h-vs ' + (vsSmooth > 1.5 ? 'up' : vsSmooth < -1.5 ? 'down' : '');
         }
         if (d.rings) {
-          // which ring is coming up along the course (a missed ring is behind you, not "next")
-          const total = d.rings.total ?? 0, next = d.rings.next ?? Math.min(total, (d.rings.hit ?? 0) + 1);
+          // rings are a bonus: show how many you have threaded this lap
+          const total = d.rings.total ?? 0, next = d.rings.hit ?? 0;
           setText(r.ringN, 'ringN', String(next)); setText(r.ringT, 'ringT', String(total));
           r.rings.classList.toggle('all', total > 0 && (d.rings.hit ?? 0) >= total);
         }

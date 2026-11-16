@@ -21,8 +21,8 @@ const HOP_STEPS = [
     done: (r, c) => c.ring != null },
   { id: 'rings', when: () => true,
     text: (k, t, c) => c.ring
-      ? 'Nice! Every ring refills your jets. String them together for a combo.'
-      : 'Missed it? No need to turn back: the next ring counts. Fire where JET is painted on the road.',
+      ? 'Nice! Every ring refills your jets and boost. String them together for a combo.'
+      : 'Missed it? No problem, rings are a bonus. Fire where JET is painted on the road to catch the next one.',
     keys: () => '',
     done: (r, c) => c.stepT > 4.5 },
 ];
