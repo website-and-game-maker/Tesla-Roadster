@@ -36,7 +36,8 @@ export function attachSecrets(game) {
   const valid = (map) => ALL_SECRETS.filter((x) => map[x.id]).length;
   let retryFlag = false, padY = false, hunt = null, cur = null, last = performance.now();
 
-  const device = () => game.input.lastDevice || 'keyboard';
+  // what the player is holding: the UI tracks it (and honours the Controls setting); fall back to the last input seen
+  const device = () => (document.querySelector('.ui-root') || {}).dataset?.device || game.input.lastDevice || 'keyboard';
   const sys = {
     get state() { return st(); },
     get hunter() { return st().hunter; },
@@ -115,6 +116,7 @@ export function attachSecrets(game) {
   const overlay = createOverlay({
     jetLabel: () => ({ touch: 'JET', gamepad: 'A' }[device()] || 'Space'),
     retryLabel: () => ({ touch: 'Tap Try again', gamepad: 'Press Y' }[device()] || 'Press T'),
+    resetLabel: () => ({ touch: '↺', gamepad: 'LB' }[device()] || 'R'),
     onRetry: () => { retryFlag = true; },
   });
   sys.overlay = overlay;

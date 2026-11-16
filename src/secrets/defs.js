@@ -6,7 +6,8 @@
 //   side  -1/1  left or right of the driving direction
 //   tier  'low'   just past the road edge, a tap of the jets up
 //         'high'  over the road, most of a full burn up
-//         'wall'  outside the barrier: hop, drift out over it, drift back
+//         'wall'  off the track: on open ground outside the fence (full burn over the 16 m
+//                 fence, then drive to it), or on top of the fence where there is no ground
 //   prop  which little model to build (src/secrets/props.js)
 //   challenge  what Secret Hunt asks you to do there (src/secrets/hunt.js)
 //
@@ -20,7 +21,7 @@ export const HUNTER_STARS = 6;
 export const HUNTER_FINDS = 3;
 
 export const CHALLENGES = {
-  sparks: { name: 'Spark Run', goal: (c) => `Collect all ${c.count} sparks ahead before the timer runs out. High ones need a jet hop.` },
+  sparks: { name: 'Spark Run', goal: (c) => `Collect ${c.need} of the ${c.count} sparks along the road ahead before the timer runs out. ${c.flat ? 'Stay on the racing line.' : 'Gold ones are high: jet hop for them.'}` },
   skyhigh: { name: 'Sky High', goal: (c) => `Climb to ${c.height} m above the road in one jet burn.` },
   glide: { name: 'Long Glide', goal: (c) => `Stay in the air for ${c.seconds.toFixed(1)} seconds in one hop. Burn the whole tank, then glide.` },
   bullseye: { name: 'Bullseye', goal: () => 'Jet hop and land inside the glowing circle on the road ahead.' },
@@ -32,52 +33,52 @@ export const SECRETS = {
   coast: [
     S('coast-bottle', 'Message in a Bottle', 'low', 0.16, 1, 'bottle', 'sparks', 'The note inside says: "Send more jet fuel."', 'Bobbing just past the right edge of the road, early in the lap. A tap of the jets reaches it.'),
     S('coast-gull', 'The Brass Gull', 'high', 0.47, -1, 'gull', 'skyhigh', 'A weathervane that slipped its roof and never came down.', 'High above the road around the half-way point. Hold the jets for a long burn.'),
-    S('coast-buoy', 'Runaway Buoy', 'wall', 0.78, -1, 'buoy', 'bullseye', 'It was supposed to be in the sea. It prefers the view up here.', 'Outside the left guardrail in the last quarter of the lap. Hop and drift out over the rail.'),
+    S('coast-buoy', 'Runaway Buoy', 'wall', 0.78, -1, 'buoy', 'bullseye', 'It was supposed to be in the sea. It prefers dry land.', "Off the track, on the ground past the left guardrail in the last quarter of the lap. Full burn over the fence, then drive to it."),
   ],
   saltflats: [
     S('salt-hubcap', 'The Lost Hubcap', 'low', 0.12, -1, 'hubcap', 'sparks', 'Still spinning from a record run nobody wrote down.', 'Spinning beside the left edge of the road soon after the start.'),
-    S('salt-cactus', 'Mirage Cactus', 'wall', 0.41, 1, 'cactus', 'glide', 'Wears sunglasses. Insists it is real.', 'Past the right-hand markers before half-way. It only looks far away.'),
+    S('salt-cactus', 'Mirage Cactus', 'wall', 0.41, 1, 'cactus', 'glide', 'Wears sunglasses. Insists it is real.', "Out on the salt past the right-hand fence, before half-way. It only looks far away."),
     S('salt-marker', 'Mile Marker Zero', 'high', 0.71, 1, 'marker', 'skyhigh', 'Every record has to start somewhere. This one starts up here.', 'High over the long back stretch. Full burn.'),
   ],
   spires: [
     S('spires-kite', 'Paper Kite', 'high', 0.2, 1, 'kite', 'glide', 'No string. No owner. Excellent lift.', 'Riding the wind high above the skyway in the first quarter.'),
     S('spires-chime', 'Wind Chime', 'low', 0.52, -1, 'chime', 'sparks', 'It plays the first four notes of a song you almost remember.', 'Hanging just off the left edge of the deck near half-way.'),
-    S('spires-lantern', 'Cloud Lantern', 'wall', 0.82, 1, 'lantern', 'bullseye', 'Someone lit it a long time ago. It has not gone out.', 'Floating off the right side of the deck late in the lap. Do not land out there.'),
+    S('spires-lantern', 'Cloud Lantern', 'wall', 0.82, 1, 'lantern', 'bullseye', 'Someone lit it a long time ago. It has not gone out.', "Riding the top of the right fence late in the lap. It takes a full burn."),
   ],
   city: [
-    S('city-cat', 'Neon Cat', 'wall', 0.14, -1, 'cat', 'bullseye', 'The sign shop closed years ago. The cat stayed on.', 'Glowing behind the left barrier early in the lap.'),
+    S('city-cat', 'Neon Cat', 'wall', 0.14, -1, 'cat', 'bullseye', 'The sign shop closed years ago. The cat stayed on.', "Off the track behind the left fence, early in the lap. Full burn over the fence."),
     S('city-cones', 'Cone Crown', 'low', 0.44, 1, 'cones', 'sparks', 'Five traffic cones, stacked by someone with ambition.', 'Stacked above the right edge of the road before half-way.'),
     S('city-disco', 'Midnight Mirrorball', 'high', 0.75, -1, 'disco', 'skyhigh', 'The party is forty floors up. This fell off.', 'Turning slowly, high over the street in the last third.'),
   ],
   alpine: [
     S('alpine-snowman', 'Snowman Pilot', 'low', 0.18, 1, 'snowman', 'sparks', 'Goggles on. Scarf up. Cleared for take-off.', 'Hovering beside the right edge of the road in the first climb.'),
     S('alpine-bell', 'Golden Cowbell', 'high', 0.5, 1, 'bell', 'glide', 'You can hear it from the next valley.', 'Ringing high above the road at half-way.'),
-    S('alpine-ski', 'The Lost Ski', 'wall', 0.8, -1, 'ski', 'bullseye', 'Its twin made it to the bottom in 1987.', 'Beyond the left barrier on the way back down.'),
+    S('alpine-ski', 'The Lost Ski', 'wall', 0.8, -1, 'ski', 'bullseye', 'Its twin made it to the bottom in 1987.', "Lying off the track past the left fence, on the way back down."),
   ],
   canyon: [
     S('canyon-lantern', "Prospector's Lantern", 'low', 0.1, -1, 'oillamp', 'sparks', 'Still warm. The prospector cannot be far.', 'Swinging by the left edge of the viaduct soon after the start.'),
     S('canyon-pick', 'Golden Pickaxe', 'high', 0.42, -1, 'pickaxe', 'skyhigh', 'Struck gold once. Then somebody struck it.', 'High above the road before half-way. Full burn.'),
-    S('canyon-weed', 'Tumbleweed King', 'wall', 0.73, 1, 'tumbleweed', 'glide', 'Rolled so far it grew a crown.', 'Drifting outside the right rail in the last third.'),
+    S('canyon-weed', 'Tumbleweed King', 'wall', 0.73, 1, 'tumbleweed', 'glide', 'Rolled so far it grew a crown.', "Perched on top of the right fence in the last third. Full burn."),
   ],
   launch: [
     S('launch-sat', 'Pocket Satellite', 'high', 0.22, -1, 'satellite', 'skyhigh', 'Orbit was the plan. Fifteen metres up is also fine.', 'Hanging high above the road in the first quarter.'),
     S('launch-duck', 'Rubber Duck Astronaut', 'low', 0.5, -1, 'duck', 'sparks', 'Mission patch reads: "Bath 1".', 'Floating by the left edge of the road at half-way.'),
-    S('launch-cone', 'Spare Nose Cone', 'wall', 0.8, 1, 'nosecone', 'bullseye', 'Somebody is going to need that.', 'Parked in mid-air past the right barrier, late in the lap.'),
+    S('launch-cone', 'Spare Nose Cone', 'wall', 0.8, 1, 'nosecone', 'bullseye', 'Somebody is going to need that.', "Parked off the track past the right fence, late in the lap."),
   ],
   mars: [
     S('mars-rover', 'Little Rover', 'low', 0.15, 1, 'rover', 'sparks', 'It has been waiting for a wave back since sol 1.', 'Hovering by the right edge of the road early in the lap. Low gravity makes the hop easy.'),
-    S('mars-jar', 'Dust Devil in a Jar', 'wall', 0.46, -1, 'jar', 'glide', 'Do not open on a clean floor.', 'Outside the left markers before half-way.'),
+    S('mars-jar', 'Dust Devil in a Jar', 'wall', 0.46, -1, 'jar', 'glide', 'Do not open on a clean floor.', "Out in the dust beyond the left fence, around half-way."),
     S('mars-flag', 'First Flag', 'high', 0.77, 1, 'flag', 'skyhigh', 'Planted on nothing. Claims everything.', 'High over the road in the last quarter.'),
   ],
   isles: [
-    S('isles-teapot', 'Floating Teapot', 'wall', 0.17, 1, 'teapot', 'bullseye', 'Always full. Never spills. Nobody asks why.', 'Off the right side of the first island road.'),
+    S('isles-teapot', 'Floating Teapot', 'wall', 0.17, 1, 'teapot', 'bullseye', 'Always full. Never spills. Nobody asks why.', "Balanced on top of the right fence on the first island road. Full burn."),
     S('isles-whale', 'Sky Whale', 'high', 0.5, -1, 'whale', 'glide', 'A toy one. The real ones fly higher.', 'Swimming high above the road at half-way.'),
     S('isles-shard', 'Rainbow Shard', 'low', 0.83, -1, 'shard', 'sparks', 'A piece of this morning, snapped off.', 'Glittering beside the left edge of the road near the end of the lap.'),
   ],
   moon: [
     S('moon-golf', 'Hole in One', 'high', 0.2, 1, 'golf', 'skyhigh', 'Still on its way down from a very long drive.', 'High over the road in the first quarter. Low gravity helps.'),
     S('moon-cheese', 'Moon Cheese', 'low', 0.48, 1, 'cheese', 'sparks', 'So the stories were true.', 'Floating by the right edge of the road before half-way.'),
-    S('moon-flag', 'Pocket Flag', 'wall', 0.79, -1, 'flag', 'glide', 'One small flag, one giant leap to reach it.', 'Past the left markers late in the lap.'),
+    S('moon-flag', 'Pocket Flag', 'wall', 0.79, -1, 'flag', 'glide', 'One small flag, one giant leap to reach it.', "Planted in the regolith past the left fence, late in the lap."),
   ],
 };
 

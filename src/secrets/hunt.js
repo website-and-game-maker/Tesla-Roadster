@@ -12,8 +12,9 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // Mirrors the jet tank in src/game/hopRace.js; only used to size challenges to what one burn can do.
 const TANK_BURN = 1.4;
 const TOUCH_R = 3.4;       // how close the car has to get to a secret
-const SPARK_R = 3.4;
-const SPARK_H = [1, 5, 1, 7, 1, 5];
+const SPARK_R = 4;
+const FENCE_H = 16;       // src/game/hopRace.js: below this the track fence keeps cars in
+const SPARK_H = [1, 4.5, 1, 5.5, 1, 4.5]; // metres above the road: the high ones are a tap of the jets
 const SPARK_LAT = [0, 0.45, -0.45, 0, 0.5, -0.3];
 
 /** What one full tank does from a standing hop: highest point and time in the air. */
@@ -66,15 +67,14 @@ export class Hunt {
     for (const def of SECRETS[this.worldId] || []) this.items.push(this.place(def));
     this.buildTrail();
     this.refresh();
-    if (this.huntMode) race.offTrackGrace = 600; // free roam: never hurry the player back
   }
 
   // ------------------------------------------------------------------ placement
   tierSpot(def) {
     const tr = this.race.track;
     if (def.tier === 'high') return { lat: def.side * tr.roadHalf * 0.3, h: clamp(this.apex * 0.58, 8, 16) };
-    // 'wall' sits just outside the track fence, above the 9 m the fence stops, so it takes a real burn.
-    if (def.tier === 'wall') return { lat: def.side * (tr.wallHalf + 2.5), h: clamp(this.apex * 0.42, 10.5, 12) };
+    // 'wall' fallback (sky roads, or no flat ground nearby): riding the top of the track fence.
+    if (def.tier === 'wall') return { lat: def.side * (tr.wallHalf - 1.2), h: FENCE_H + 1.5 };
     return { lat: def.side * (tr.roadHalf + 1.2), h: 4.6 };
   }
 
@@ -82,9 +82,9 @@ export class Hunt {
   spotOk(d, lat, h) {
     const r = this.race, tr = r.track, L = tr.length;
     if (d < 90 || d > L - 70) return false;
-    if (r.gapAt) for (let a = -40; a <= 60; a += 10) if (r.gapAt(d + a)) return false;
+    if (r.gapAt) for (let a = -200; a <= 60; a += 10) if (r.gapAt(d + a)) return false; // not right after a gap landing: the tank needs time to refill
     for (const ring of r.rings || []) { const o = Math.abs(ring.dist - d); if (Math.min(o, L - o) < 35) return false; }
-    if (Math.abs(tr.curvatureAt(d)) > 0.012) return false;
+    for (let a = -90; a <= 20; a += 10) if (Math.abs(tr.curvatureAt(d + a)) > 0.012) return false; // a straight run-up, so you can line up the hop
     const p = tr.pointAt(d, lat, {});
     const ground = r.groundAt ? r.groundAt(p.x, p.z) : p.y;
     if (Number.isFinite(ground) && ground > p.y + h - 2.5) return false; // buried in a hillside
@@ -94,20 +94,57 @@ export class Hunt {
     return Math.min(off, L - off) < 30;
   }
 
+  /**
+   * Off-track spot for a 'wall' secret: on open ground outside the fence that a car can
+   * actually drive across from the fence line (no cliffs, steps, water or far-below drops).
+   */
+  groundSpotOk(d, lat) {
+    const r = this.race, tr = r.track, L = tr.length;
+    if (!r.groundAt || r.skyWorld) return false;
+    if (d < 90 || d > L - 70) return false;
+    for (let a = -90; a <= 20; a += 10) if (Math.abs(tr.curvatureAt(d + a)) > 0.01) return false;
+    if (r.gapAt) for (let a = -120; a <= 60; a += 10) if (r.gapAt(d + a)) return false;
+    const water = r.world.def && r.world.def.water ? r.world.def.water.level + 1 : -Infinity;
+    const s = Math.sign(lat), road = tr.pointAt(d, 0, {}).y;
+    for (const along of [-8, 0, 8]) {
+      let prev = null;
+      for (let a = tr.wallHalf - 1; a <= Math.abs(lat) + 6; a += 1.5) {
+        const p = tr.pointAt(d + along, s * a, {});
+        const g = r.groundAt(p.x, p.z);
+        if (!Number.isFinite(g) || g < water || Math.abs(g - road) > 7) return false;
+        if (prev != null && Math.abs(g - prev) > 0.75) return false;
+        prev = g;
+      }
+    }
+    const p = tr.pointAt(d, lat, {}), near = tr.locate(p.x, p.z, -1, {});
+    const off = Math.abs(near.dist - d);
+    return Math.min(off, L - off) < 30 && Math.abs(Math.abs(near.lat) - Math.abs(lat)) < 3;
+  }
+
   place(def) {
     const r = this.race, tr = r.track, L = tr.length;
-    const { lat, h } = this.tierSpot(def);
-    let d = def.at * L, ok = false;
+    let { lat, h } = this.tierSpot(def);
+    let d = def.at * L, ok = false, spot = def.tier === 'wall' ? 'fence' : def.tier;
+    if (def.tier === 'wall') {
+      for (let k = 0; k < 140 && !ok; k++) {
+        const dd = (def.at * L + k * 9) % L;
+        for (const out of [13, 18, 9]) {
+          const la = def.side * (tr.wallHalf + out);
+          if (this.groundSpotOk(dd, la)) { ok = true; d = dd; lat = la; spot = 'ground'; break; }
+        }
+      }
+    }
     for (let k = 0; k < 80 && !ok; k++) { ok = this.spotOk(d, lat, h); if (!ok) d = (d + 9) % L; }
     if (!ok) d = def.at * L; // nowhere perfect: keep the authored spot rather than lose the secret
     const p = tr.pointAt(d, lat, {});
+    if (spot === 'ground') { const g = r.groundAt(p.x, p.z); h = g + 2.1 - p.y; }
     const pos = new THREE.Vector3(p.x, p.y + h, p.z);
     const prop = buildProp({ ...def, world: this.worldId });
     const holder = new THREE.Group(); holder.position.copy(pos); holder.rotation.y = p.yaw + Math.PI;
     prop.object.scale.setScalar(1.25);
     const inner = new THREE.Group(); inner.add(prop.object); holder.add(inner);
     const glint = new THREE.Sprite(new THREE.SpriteMaterial({ map: glintTexture(), color: 0xffe9a8, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
-    glint.scale.setScalar(2.2); holder.add(glint);
+    glint.scale.setScalar(1.3); glint.position.y = 1.5; holder.add(glint);
     const ground = Math.min(p.y, r.groundAt ? r.groundAt(p.x, p.z) : p.y);
     const beamH = h + 70 + (p.y - ground);
     const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, beamH, 8, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd76a, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, fog: false }));
@@ -115,7 +152,7 @@ export class Hunt {
     const halo = new THREE.Mesh(new THREE.TorusGeometry(1.9, 0.06, 8, 40), new THREE.MeshBasicMaterial({ color: 0x4dff9a, transparent: true, opacity: 0.9 }));
     halo.rotation.x = Math.PI / 2; holder.add(halo);
     this.group.add(holder, beam);
-    return { def, dist: d, lat, h, pos, prop, holder, glint, beam, halo, cool: 0 };
+    return { def, dist: d, lat, h, pos, prop, holder, glint, beam, halo, cool: 0, spot };
   }
 
   /** Show each secret the way its state calls for: hidden glint, hunter beam, challenge beacon, done. */
@@ -143,7 +180,7 @@ export class Hunt {
     const active = r.state === 'race' || (r.state === 'finished' && !this.huntMode);
     for (const it of this.items) {
       it.prop.update(this.t + it.dist);
-      it.glint.material.opacity = 0.35 + 0.65 * Math.abs(Math.sin(this.t * 2.1 + it.dist));
+      it.glint.material.opacity = 0.25 + 0.55 * Math.abs(Math.sin(this.t * 2.1 + it.dist));
       it.glint.material.rotation = this.t * 0.6;
       if (it.beam.visible) it.beam.material.opacity = 0.2 + 0.12 * Math.sin(this.t * 3 + it.dist);
       if (it.halo.visible) it.halo.rotation.z = this.t;
@@ -177,10 +214,34 @@ export class Hunt {
   // ------------------------------------------------------------------ challenges
   challengeConfig(it) {
     const type = it.def.challenge, tr = this.race.track;
-    if (type === 'skyhigh') return { height: Math.max(6, Math.round(this.apex * 0.8)), limit: 25 };
+    if (type === 'skyhigh') return { height: Math.max(6, Math.round(this.apex * 0.7)), limit: 25 };
     if (type === 'glide') return { seconds: Math.round(this.airMax * 0.72 * 10) / 10, limit: 30 };
-    if (type === 'bullseye') return { ahead: 230, radius: 5.5, limit: 28 };
-    return { count: SPARK_H.length, first: 130, gap: 50, limit: Math.round((130 + SPARK_H.length * 50) / 20 + 10), roadHalf: tr.roadHalf };
+    if (type === 'bullseye') {
+      // the target goes on solid, fairly straight road a few seconds ahead
+      const r = this.race; let ahead = 230, bestK = Infinity;
+      for (let f = 200; f <= 420; f += 20) {
+        let k = 0;
+        for (let a = -70; a <= 40; a += 10) { k = Math.max(k, Math.abs(tr.curvatureAt(it.dist + f + a))); if (r.gapAt && r.gapAt(it.dist + f + a)) k = 1; }
+        k += f * 0.00002;
+        if (k < bestK) { bestK = k; ahead = f; }
+      }
+      return { ahead, radius: 7, limit: Math.round(ahead / 20 + 16) };
+    }
+    // low gravity makes every hop longer, so the sparks spread out to match
+    const gap = Math.round(50 * 9.81 / Math.min(9.81, this.race.g || 9.81));
+    // lay the run on the straightest stretch coming up, clear of gaps, so hops are not asked for mid-corner
+    const n = SPARK_H.length, r = this.race;
+    let first = 130, bestK = Infinity;
+    for (let f = 110; f <= 230; f += 30) {
+      let k = 0;
+      for (let a = -30; a <= n * gap; a += 15) {
+        k = Math.max(k, Math.abs(tr.curvatureAt(it.dist + f + a)));
+        if (r.gapAt && r.gapAt(it.dist + f + a)) k = 1;
+      }
+      k += f * 0.00002; // nearer is better when about as straight
+      if (k < bestK) { bestK = k; first = f; }
+    }
+    return { count: n, need: n - 1, first, gap, flat: bestK > 0.014, limit: Math.round((first + n * gap) / 20 + 10), roadHalf: tr.roadHalf };
   }
 
   startChallenge(it, ready = 3) {
@@ -191,9 +252,11 @@ export class Hunt {
     if (type === 'sparks') {
       const geo = new THREE.OctahedronGeometry(0.7, 0);
       for (let i = 0; i < cfg.count; i++) {
-        const p = tr.pointAt(it.dist + cfg.first + i * cfg.gap, SPARK_LAT[i] * cfg.roadHalf, {});
-        const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: SPARK_H[i] > 2 ? 0xffc94d : 0x35e8ff, transparent: true, opacity: 0.95, fog: false }));
-        m.position.set(p.x, p.y + SPARK_H[i] + 0.6, p.z);
+        // nowhere straight (a very twisty lap): keep them all on the road, it becomes a driving line
+        const sh = cfg.flat ? 1 : SPARK_H[i];
+        const p = tr.pointAt(it.dist + cfg.first + i * cfg.gap, (cfg.flat ? 0 : SPARK_LAT[i]) * cfg.roadHalf, {});
+        const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: sh > 2 ? 0xffc94d : 0x35e8ff, transparent: true, opacity: 0.95, fog: false }));
+        m.position.set(p.x, p.y + sh + 0.6, p.z);
         this.group.add(m); ch.objs.push({ mesh: m, got: false });
       }
     } else if (type === 'bullseye') {
@@ -221,7 +284,7 @@ export class Hunt {
 
   onRoad() {
     const c = this.race.player, tr = this.race.track;
-    return !c.jet.air && Math.abs(c.info.lat) <= tr.roadHalf + 1.5;
+    return !c.jet.air && !c.outside && Math.abs(c.info.lat) <= tr.roadHalf + 1.5;
   }
 
   updateChallenge(dt, a, jumped) {
@@ -250,7 +313,7 @@ export class Hunt {
           this.sys.audio('ring', ch.got); r.vibrate && r.vibrate(20);
         }
       }
-      won = ch.got >= cfg.count;
+      won = ch.got >= cfg.need;
     } else if (ch.type === 'skyhigh') {
       const alt = Math.max(0, v.y - c.info.y);
       ch.best = Math.max(ch.best, alt); ch.got = Math.min(cfg.height, Math.round(alt));
@@ -296,12 +359,9 @@ export class Hunt {
   retry() {
     const ch = this.ch; if (!ch) return;
     const r = this.race, c = r.player, tr = r.track, it = ch.it;
-    const p = tr.pointAt(it.dist - 110, 0, {});
-    tr.locate(p.x, p.z, -1, c.info);
-    r.resetCar(c); // the race's own reset keeps it clear of gaps
-    const J = c.jet; J.air = false; J.vy = 0; J.firing = false; J.fuel = 1;
-    c.v.y = r.groundUnder ? r.groundUnder(c) : c.info.y;
-    c.prevD = c.info.dist; c.prevDist = c.info.dist;
+    const d = (it.dist - 110 + tr.length) % tr.length;
+    r.respawn(c, 'TRY AGAIN', d); // the race's own reset: back inside the fence, clear of gaps
+    c.jet.fuel = 1; c.prevDist = c.info.dist;
     this.last = null; it.cool = 0.2;
     this.startChallenge(it, 2.5);
   }
@@ -310,7 +370,7 @@ export class Hunt {
     const ch = this.ch; if (!ch) return;
     const C = CHALLENGES[ch.type], cfg = ch.cfg;
     let progress = '', frac = 0;
-    if (ch.type === 'sparks') { progress = `${ch.got} / ${cfg.count} sparks`; frac = ch.got / cfg.count; }
+    if (ch.type === 'sparks') { progress = `${ch.got} / ${cfg.need} sparks`; frac = ch.got / cfg.need; }
     else if (ch.type === 'skyhigh') { progress = `${ch.got} / ${cfg.height} m`; frac = ch.got / cfg.height; }
     else if (ch.type === 'glide') { progress = `${ch.got.toFixed(1)} / ${cfg.seconds.toFixed(1)} s in the air`; frac = ch.got / cfg.seconds; }
     else progress = 'Land in the circle';
@@ -340,10 +400,10 @@ export class Hunt {
     const dx = best.pos.x - v.x, dz = best.pos.z - v.z;
     const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw);
     // angle from the car's nose, clockwise positive (to the right)
-    const angle = Math.atan2(dx * fz - dz * fx, dx * fx + dz * fz);
+    const angle = Math.atan2(dz * fx - dx * fz, dx * fx + dz * fz); // the car's right is (-fz, fx)
     return {
       ...counts, dist: Math.hypot(dx, dz), ahead: bestD, angle, up: best.pos.y - (v.y + 0.6),
-      known: best.found, name: best.found ? best.def.name : '', tier: best.def.tier, side: best.def.side,
+      known: best.found, name: best.found ? best.def.name : '', tier: best.spot, side: best.def.side,
     };
   }
 

@@ -4,7 +4,7 @@
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export function createOverlay({ jetLabel, retryLabel, onRetry }) {
+export function createOverlay({ jetLabel, retryLabel, resetLabel, onRetry }) {
   const host = document.querySelector('.ui-root') || document.body;
   const el = document.createElement('div');
   el.className = 'sx-root';
@@ -56,8 +56,9 @@ export function createOverlay({ jetLabel, retryLabel, onRetry }) {
         const side = d.side < 0 ? 'left' : 'right', jet = jetLabel();
         if (d.dist < 260) {
           l2 = d.tier === 'high' ? `High above the road. Hold ${jet} for a long burn.`
-            : d.tier === 'wall' ? `Past the ${side} fence. Hold ${jet} and steer ${side} over it.`
-              : `Just off the ${side} edge. Tap ${jet} as you pass.`;
+            : d.tier === 'ground' ? `Off the track, past the ${side} fence. Hold ${jet} until the tank is empty to clear it, then drive to the beam.`
+              : d.tier === 'fence' ? `On top of the ${side} fence. Hold ${jet} until the tank is empty and steer ${side}.`
+                : `Just off the ${side} edge. Tap ${jet} as you pass.`;
         } else l2 = d.known ? d.name : 'Follow the arrow and look for the light beam.';
         rot = d.angle;
       }
@@ -74,7 +75,7 @@ export function createOverlay({ jetLabel, retryLabel, onRetry }) {
     challenge(c) {
       if (!c) { if (lastCh) { chEl.classList.remove('on'); lastCh = ''; } return; }
       let kicker = `CHALLENGE · ${c.secret}`, text = c.goal, time = `${Math.ceil(c.time)} s`, retry = false;
-      if (c.state === 'ready') time = c.offRoad ? 'Get back on the road to start' : `Starts in ${c.ready}`;
+      if (c.state === 'ready') time = c.offRoad ? `Get back on the road to start (${resetLabel()} puts you there)` : `Starts in ${c.ready}`;
       else if (c.state === 'failed') { kicker = 'OUT OF TIME'; text = `No penalty. ${retryLabel()} to go again from just before the secret.`; time = ''; retry = true; }
       const key = `${c.state}|${kicker}|${text}|${c.progress}|${time}`;
       if (key !== lastCh) {
