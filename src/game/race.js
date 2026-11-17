@@ -188,7 +188,7 @@ export class Race {
       const v = c.v;
       let ci;
       if (!racing) ci = { steer: 0, throttle: 0, brake: 0, handbrake: false, boost: false };
-      else if (c.isPlayer && !c.finished) {
+      else if (c.isPlayer && !c.finished && !this.autopilot) { // autopilot: test hook, AI drives the player
         ci = inp;
         if (this.game.profile.settings.assist && Math.abs(inp.steer) < 0.05 && !inp.handbrake) {
           // gentle straight-line assist: damp yaw wobble when not steering
@@ -387,7 +387,12 @@ export class Race {
   }
 
   flash(text) { this.note = text; this.noteT = 2.2; }
-  vibrate(ms) { if (this.game.profile.settings.vibration && navigator.vibrate && this.game.input.lastDevice === 'touch') navigator.vibrate(ms); }
+  vibrate(ms) {
+    const g = this.game;
+    if (!g.profile.settings.vibration) return;
+    if (g.input.lastDevice === 'touch' && navigator.vibrate) navigator.vibrate(ms);
+    else if (g.input.lastDevice === 'gamepad' && g.input.rumble) g.input.rumble(ms, Math.min(1, 0.25 + ms / 100));
+  }
 
   postUpdate(dt, inp) {
     const g = this.game;
@@ -430,10 +435,7 @@ export class Race {
       o.position.set(v.x, v.y, v.z);
       o.rotation.set(-Math.atan(slopeAlong), v.yaw, 0, 'YXZ');
       const body = c.model.body;
-      if (body) {
-        body.rotation.z += (clamp(-v.accelLat * 0.006, -0.06, 0.06) - body.rotation.z) * Math.min(1, dt * 8);
-        body.rotation.x += (clamp(-v.accelLong * 0.004, -0.04, 0.04) - body.rotation.x) * Math.min(1, dt * 6);
-      }
+      if (body) this.suspension(c, body, dt);
       c.model.update(dt, v.vF, -v.steer); // car API: +rad steers left
       c.model.setBrake && c.model.setBrake(v.brake > 0.1 && v.vF > 0.5);
       c.model.setReverse && c.model.setReverse(v.vF < -0.5);
@@ -487,6 +489,37 @@ export class Race {
     if (this.cfg.type === 'free' && this.state === 'race') this.message = this.message === 'GO!' ? 'GO!' : '';
   }
 
+  /**
+   * Sprung body: roll, pitch and heave are damped springs, not straight lerps, so the body
+   * leans into a corner, settles with a small overshoot, squats under power, dives under
+   * braking and compresses when it lands (bump() adds a kick). About 1.7 Hz, lightly damped,
+   * like a stiff sports car.
+   */
+  suspension(c, body, dt) {
+    const v = c.v, S = c.sus || (c.sus = { r: 0, rv: 0, p: 0, pv: 0, h: 0, hv: 0, y0: body.position.y });
+    const air = c.jet && c.jet.air;
+    const tr = air ? 0 : clamp(-v.accelLat * 0.0065, -0.075, 0.075);
+    const tp = air ? 0 : clamp(-v.accelLong * 0.0045, -0.05, 0.05);
+    if (!air && c.offRoad && v.speed > 6) S.hv += (Math.random() - 0.5) * Math.min(1, v.speed / 30) * 0.9 * dt * 60 * 0.02; // rough ground
+    const K = 115, D = 9.5, n = Math.max(1, Math.ceil(dt / (1 / 120)));
+    const h = dt / n;
+    for (let i = 0; i < n; i++) {
+      S.rv += (K * (tr - S.r) - D * S.rv) * h; S.r += S.rv * h;
+      S.pv += (K * (tp - S.p) - D * S.pv) * h; S.p += S.pv * h;
+      S.hv += (K * (0 - S.h) - D * S.hv) * h; S.h += S.hv * h;
+    }
+    S.h = clamp(S.h, -0.14, 0.08); S.r = clamp(S.r, -0.1, 0.1); S.p = clamp(S.p, -0.08, 0.08);
+    body.rotation.z = S.r; body.rotation.x = S.p; body.position.y = S.y0 + S.h;
+  }
+
+  /** Kick the suspension: landings (strength in m/s of impact) compress it, nose first if pitching down. */
+  bump(c, impact) {
+    const S = c.sus; if (!S) return;
+    S.hv -= Math.min(2.4, impact * 0.12);
+    S.pv += Math.min(0.6, impact * 0.025);
+    if (c.isPlayer) this.camDip = Math.min(0.5, (this.camDip || 0) + impact * 0.02);
+  }
+
   placeCamera(dt, snap) {
     const v = this.player.v, cam = this.camera;
     const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw);
@@ -511,14 +544,29 @@ export class Race {
     } else {
       const dist = (this.camMode === 1 ? 9.5 : 6.4) + sp * 0.02, h = this.camMode === 1 ? 3.6 : 2.15;
       pos = new THREE.Vector3(v.x - dx * dist, v.y + h, v.z - dz * dist);
-      look = new THREE.Vector3(v.x + fx * 4, v.y + 0.9, v.z + fz * 4);
+      // look a little into the corner: where the nose will point a fraction of a second from now
+      const ly = v.yaw + clamp(v.yawRate, -1.2, 1.2) * 0.16;
+      look = new THREE.Vector3(v.x + Math.sin(ly) * 4, v.y + 0.9, v.z + Math.cos(ly) * 4);
       if (snap) cam.position.copy(pos);
-      else cam.position.lerp(pos, 1 - Math.exp(-dt * 9));
-      if (cam.position.y < v.y + 0.8) cam.position.y = v.y + 0.8;
+      else {
+        // follow tightly side to side, looser up and down: hops and crests read as height on screen
+        const kh = 1 - Math.exp(-dt * 9), kv = 1 - Math.exp(-dt * 6);
+        cam.position.x += (pos.x - cam.position.x) * kh;
+        cam.position.z += (pos.z - cam.position.z) * kh;
+        cam.position.y += (pos.y - cam.position.y) * kv;
+      }
+      if (cam.position.y < v.y + 1.0) cam.position.y = v.y + 1.0;
+    }
+    if (this.camDip > 0) { // a landing settles the camera down for a moment
+      cam.position.y -= this.camDip; look.y -= this.camDip * 0.5;
+      this.camDip = Math.max(0, this.camDip - dt * 1.6);
     }
     if (this.shake > 0) {
-      const s = this.shake * 0.25;
-      cam.position.x += (Math.random() - 0.5) * s; cam.position.y += (Math.random() - 0.5) * s; cam.position.z += (Math.random() - 0.5) * s;
+      // smooth shake (layered sines, not per-frame noise): rumbles instead of jitters
+      const s = this.shake * 0.22, t = this.time * 31;
+      cam.position.x += (Math.sin(t * 1.0) + Math.sin(t * 2.3 + 1.7) * 0.5) * s * 0.6;
+      cam.position.y += (Math.sin(t * 1.3 + 0.4) + Math.sin(t * 2.9 + 2.2) * 0.5) * s * 0.6;
+      cam.position.z += Math.sin(t * 1.7 + 3.1) * s * 0.4;
       this.shake = Math.max(0, this.shake - dt * 2.5);
     }
     cam.lookAt(look);

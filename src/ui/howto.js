@@ -38,7 +38,7 @@ export const CONTROLS = {
 export const FLIGHT_CONTROLS = {
   touch: [
     { key: 'GO', what: 'Drive', how: 'Hold the big button on the right' },
-    { key: 'BRAKE', what: 'Brake, then reverse', how: 'Hold it next to GO' },
+    { key: 'BRAKE', what: 'Brake, then reverse', how: 'Hold it next to GO. In the air it drops you down faster' },
     { key: '◀ ▶', what: 'Steer', how: 'Drag left or right anywhere on the left side', tiltAlt: 'Or tilt your device like a steering wheel' },
     { key: 'JET', what: 'Fire the jets', how: 'Hold for a short hop. The tank refills on the ground' },
     { key: '⚡', what: 'Boost', how: 'Tap when it glows' },
@@ -46,7 +46,7 @@ export const FLIGHT_CONTROLS = {
   ],
   keyboard: [
     { key: 'W  or  ↑', what: 'Drive' },
-    { key: 'S  or  ↓', what: 'Brake, then reverse' },
+    { key: 'S  or  ↓', what: 'Brake, then reverse', how: 'In the air: drop down faster' },
     { key: 'A D  or  ← →', what: 'Steer' },
     { key: 'Space', what: 'Fire the jets (short hops)' },
     { key: 'Shift', what: 'Boost' },
@@ -56,8 +56,8 @@ export const FLIGHT_CONTROLS = {
   ],
   gamepad: [
     { key: 'RT', what: 'Drive' },
-    { key: 'LT', what: 'Brake, then reverse' },
-    { key: 'Left stick', what: 'Steer' },
+    { key: 'LT', what: 'Brake, then reverse', how: 'In the air: drop down faster' },
+    { key: 'Left stick  or  D-pad', what: 'Steer' },
     { key: 'A', what: 'Fire the jets (short hops)' },
     { key: 'X  or  RB', what: 'Boost' },
     { key: 'Y', what: 'Change camera' },
