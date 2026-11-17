@@ -1,0 +1,91 @@
+# Compiles every Apple app on a GitHub-hosted Mac, so the Swift code is checked without a local Xcode.
+# Nothing is signed or uploaded to Apple here. The Mac app is attached to the run as a zip you can download and open.
+name: Apple apps
+
+on:
+  pull_request:
+    paths: ['apple/**', '.github/workflows/apple.yml']
+  push:
+    branches: [main]
+    paths: ['apple/**', 'src/**', 'index.html', 'vendor/**', '.github/workflows/apple.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: apple-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  logic:
+    name: Mini-game logic tests
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the autopilot tests
+        run: sh apple/scripts/test-logic.sh
+
+  build:
+    name: ${{ matrix.name }}
+    runs-on: macos-15
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: iPhone and iPad, scheme: Roadster, destination: 'generic/platform=iOS Simulator' }
+          - { name: Mac, scheme: Roadster, destination: 'platform=macOS' }
+          - { name: Apple Vision Pro, scheme: Roadster, destination: 'generic/platform=visionOS Simulator' }
+          - { name: Apple TV, scheme: JetHop, destination: 'generic/platform=tvOS Simulator' }
+          - { name: Apple Watch, scheme: HopDash, destination: 'generic/platform=watchOS Simulator' }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate the Xcode project
+        working-directory: apple
+        run: xcodegen generate
+      - name: Show Xcode and SDKs
+        run: xcodebuild -version && xcodebuild -showsdks
+      - name: Build
+        working-directory: apple
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Roadster.xcodeproj \
+            -scheme "${{ matrix.scheme }}" \
+            -destination "${{ matrix.destination }}" \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            | tee build.log | grep -E "error|warning: |BUILD|\*\*" || true
+          grep -q "BUILD SUCCEEDED" build.log
+      - name: Check the game is inside the app
+        if: matrix.scheme == 'Roadster'
+        working-directory: apple
+        run: |
+          app=$(find build/Build/Products -maxdepth 2 -name 'Roadster*.app' | head -1)
+          echo "App: $app"
+          test -n "$(find "$app" -path '*Web/index.html')"
+          test -n "$(find "$app" -path '*Web/vendor/three.module.js')"
+      - name: Package the Mac app
+        if: matrix.name == 'Mac'
+        working-directory: apple
+        run: |
+          app=$(find build/Build/Products -maxdepth 2 -name '*.app' | head -1)
+          codesign --force --deep --sign - "$app"
+          ditto -c -k --keepParent "$app" RoadsterRush-mac.zip
+      - name: Upload the Mac app
+        if: matrix.name == 'Mac'
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoadsterRush-mac
+          path: apple/RoadsterRush-mac.zip
+      - name: Upload the build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ matrix.scheme }}-${{ strategy.job-index }}
+          path: apple/build.log
