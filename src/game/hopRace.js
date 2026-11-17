@@ -135,6 +135,8 @@ export class HopRace extends Race {
       idle: new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 }),
       done: new THREE.MeshBasicMaterial({ color: 0x35e8ff, transparent: true, opacity: 0.12 }),
     };
+    // With post-processing on, the next ring is drawn brighter than white so bloom makes it glow.
+    if (this.game.post && this.game.post.enabled) this.ringMats.next.color.multiplyScalar(2.4);
     const discTex = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d'); const gr = x.createRadialGradient(64, 64, 20, 64, 64, 64); gr.addColorStop(0, 'rgba(53,232,255,0)'); gr.addColorStop(0.8, 'rgba(53,232,255,0.14)'); gr.addColorStop(1, 'rgba(53,232,255,0.4)'); x.fillStyle = gr; x.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(cv); })();
     this.discMat = new THREE.MeshBasicMaterial({ map: discTex, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
     const disc = new THREE.CircleGeometry(1, 40);

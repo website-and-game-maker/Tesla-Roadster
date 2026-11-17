@@ -5,6 +5,7 @@ import { RoomEnvironment } from '../../vendor/RoomEnvironment.js';
 import { loadProfile, saveProfile, resetProfile } from '../core/save.js';
 import { Input } from '../core/input.js';
 import { QualityManager } from '../core/quality.js';
+import { PostFX } from '../core/postfx.js';
 import { carStats } from '../physics/vehicle.js';
 import { loadModules } from './registry.js';
 import { buildCareer, buildFlightCareer, totalStars, starsFor, EVENT_TYPES, UPGRADE_COST, MAX_UPGRADE } from './career.js';
@@ -30,6 +31,8 @@ export class Game {
     canvasParent.appendChild(r.domElement);
     this.quality = new QualityManager(r, this.profile.settings.quality);
     this.quality.apply();
+    this.post = new PostFX(r);
+    this.post.configure(this.quality.preset.post ? this.quality.tierId : 'low');
     this.quality.onChange((p) => this.applyPreset(p));
     addEventListener('resize', () => this.onResize());
 
@@ -167,6 +170,7 @@ export class Game {
 
   applyPreset(p) {
     this.renderer.shadowMap.enabled = p.shadows;
+    if (this.post) this.post.configure(p.post ? p.id : 'low');
     const scenes = [this.showroom && this.showroom.scene, this.race && this.race.scene].filter(Boolean);
     for (const sc of scenes) sc.traverse((o) => { if (o.material) [].concat(o.material).forEach((m) => { m.needsUpdate = true; }); });
     if (this.race) {
@@ -326,6 +330,8 @@ export class Game {
         this.audio.music && this.audio.music.play && this.audio.music.play('race');
         this.showHUD();
         this.onResize();
+        this.quality.settle(2.5);
+        this.post.setLook(race.postLook ? race.postLook() : {});
       } catch (e) {
         console.error(e);
         this.ui.toast('Could not load that track: ' + e.message);
@@ -412,6 +418,15 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- loop
+  /** Race frame through the post-processing chain, timed on the GPU for the quality watcher. */
+  renderRace(dt) {
+    const race = this.race, v = race.player && race.player.v;
+    const fx = v ? { speed: Math.abs(v.speed || 0) / ((v.stats && v.stats.vmax) || 75), boost: v.boosting ? 1 : 0 } : null;
+    this.quality.gpu.begin();
+    this.post.render(race.scene, race.camera, dt, fx);
+    this.quality.gpu.end();
+  }
+
   frame() {
     const now = performance.now();
     const dt = Math.min(0.1, (now - this.last) / 1000);
@@ -427,10 +442,10 @@ export class Game {
       else this.race.update(dt * 0.25);
       if (this.race) {
         if (this.state === 'race' || !this.teamUI) this.ui.hud.update(this.race.hudData(), dt);
-        this.renderer.render(this.race.scene, this.race.camera);
+        this.renderRace(dt);
       }
     } else if (this.state === 'paused' && this.race) {
-      this.renderer.render(this.race.scene, this.race.camera);
+      this.renderRace(0);
     } else if (this.state === 'loading') {
       // keep the last frame while the next track builds
     } else if (!(this.teamUI && this.ui.showroom)) {

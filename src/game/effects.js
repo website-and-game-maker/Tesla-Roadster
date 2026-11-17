@@ -16,7 +16,7 @@ export class SkidMarks {
     this.mat = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6,
       vertexShader: 'attribute float alpha; varying float vA; void main(){ vA = alpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: 'varying float vA; void main(){ gl_FragColor = vec4(0.03,0.03,0.03, vA * 0.55); }',
+      fragmentShader: 'varying float vA; void main(){ gl_FragColor = vec4(0.03,0.03,0.03, vA * 0.55);\n#include <colorspace_fragment>\n}',
     });
     this.mesh = new THREE.Mesh(g, this.mat); this.mesh.frustumCulled = false; scene.add(this.mesh);
     this.last = new Map();
@@ -55,7 +55,9 @@ export class Smoke {
       vertexShader: `attribute float life; attribute float size; varying float vL; uniform float scale;
         void main(){ vL = life; vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = size * (1.0 + (1.0-life)*3.0) * scale / -mv.z; gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `uniform vec3 color; varying float vL; void main(){ vec2 c = gl_PointCoord-0.5; float d = length(c); if(d>0.5) discard;
-        gl_FragColor = vec4(color, (1.0-d*2.0) * vL * 0.35); }`,
+        gl_FragColor = vec4(color, (1.0-d*2.0) * vL * 0.35);
+        #include <colorspace_fragment>
+      }`,
     });
     this.points = new THREE.Points(g, this.mat); this.points.frustumCulled = false; scene.add(this.points);
   }
@@ -126,7 +128,9 @@ export class Particles {
       vertexShader: `attribute float life; attribute float size; attribute float grow; attribute vec3 color; varying float vL; varying vec3 vC; uniform float scale;
         void main(){ vL = life; vC = color; vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = size * (1.0 + (1.0-life)*grow) * scale / max(-mv.z, 0.1); gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `uniform float opacity; varying float vL; varying vec3 vC; void main(){ vec2 c = gl_PointCoord-0.5; float d = length(c); if(d>0.5 || vL<=0.0) discard;
-        gl_FragColor = vec4(vC, (1.0-d*2.0) * min(1.0, vL*1.6) * opacity); }`,
+        gl_FragColor = vec4(vC, (1.0-d*2.0) * min(1.0, vL*1.6) * opacity);
+        #include <colorspace_fragment>
+      }`,
     });
     this.points = new THREE.Points(g, this.mat); this.points.frustumCulled = false; scene.add(this.points);
     this.tmp = new THREE.Color();

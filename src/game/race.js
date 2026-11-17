@@ -132,6 +132,17 @@ export class Race {
     this.placeCamera(1, true);
   }
 
+  /** Colour grade for the post-processing pass: each world gets its own mood. */
+  postLook() {
+    const w = this.world || {}, def = w.def || {}, night = w.nightAmount || 0;
+    const look = { tint: 0xffffff, saturation: 1.08, contrast: 0.12, vignette: 0.3, threshold: 1.15 };
+    if (def.atmosphere === 'mars') Object.assign(look, { tint: 0xfff1e6, saturation: 1.04, contrast: 0.14 });
+    if (def.atmosphere === 'space') Object.assign(look, { tint: 0xf1f5ff, saturation: 0.92, contrast: 0.2, vignette: 0.42, threshold: 1.3 });
+    if (def.id === 'saltflats') Object.assign(look, { threshold: 1.5, contrast: 0.1 }); // white ground: keep it from glowing
+    if (night > 0.5) Object.assign(look, { tint: 0xeaf0ff, saturation: 1.12, vignette: 0.4, threshold: 1.0 }); // let lights glow
+    return look;
+  }
+
   /** Lap time of an AI driving the player's car well: basis for time-attack medals. */
   simulateLap(stats) {
     const v = new Vehicle(stats), tr = this.track;
