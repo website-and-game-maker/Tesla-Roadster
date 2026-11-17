@@ -1,18 +1,19 @@
-// Roadster Sky Rings for Apple TV: a native mini-game built for the Siri Remote.
-// Glide your thumb on the remote's touch surface to steer the flying Roadster through rings;
-// click to fire the overdrive. All visuals are made in code: no outside art.
+// Roadster Jet Hop for Apple TV: a native mini-game built for the Siri Remote.
+// The Roadster races along a sky road full of gaps and barriers. Click to fire a short jet hop,
+// swipe left or right to change lanes, and thread the optional rings for points.
+// Same short-burst jet hops as the main game. All visuals are made in code: no outside art.
 import SwiftUI
 import SceneKit
 
 @main
-struct SkyRingsTVApp: App {
+struct JetHopTVApp: App {
     var body: some Scene {
         WindowGroup { ContentView() }
     }
 }
 
 struct ContentView: View {
-    @StateObject private var game = SkyRingsGame()
+    @StateObject private var game = JetHopGame()
 
     var body: some View {
         ZStack {
@@ -26,15 +27,15 @@ struct ContentView: View {
 }
 
 struct HUD: View {
-    @ObservedObject var game: SkyRingsGame
+    @ObservedObject var game: JetHopGame
 
     var body: some View {
         ZStack {
             VStack {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("\(game.score)").font(.system(size: 76, weight: .heavy, design: .rounded)).italic()
-                        if game.combo >= 2 { Text("RING COMBO ×\(game.combo)").font(.headline).foregroundColor(.cyan) }
+                        Text("\(game.score)").font(.system(size: 76, weight: .heavy, design: .rounded)).italic().monospacedDigit()
+                        Text("\(game.rings) rings").font(.headline).foregroundColor(.cyan)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 10) {
@@ -47,28 +48,39 @@ struct HUD: View {
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color.white.opacity(0.15)).frame(width: 260, height: 12)
                             Capsule().fill(LinearGradient(colors: [.cyan, .purple], startPoint: .leading, endPoint: .trailing))
-                                .frame(width: 260 * CGFloat(game.boost), height: 12)
+                                .frame(width: 260 * CGFloat(game.tank), height: 12)
                         }
-                        Text("OVERDRIVE").font(.caption).foregroundColor(.white.opacity(0.7))
+                        Text("JET").font(.caption).foregroundColor(.white.opacity(0.7))
                     }
                 }
                 .padding(60)
                 Spacer()
+                if !game.callout.isEmpty {
+                    Text(game.callout).font(.system(size: 54, weight: .heavy, design: .rounded)).italic()
+                        .foregroundColor(game.callout.hasPrefix("RING") ? .cyan : .orange)
+                        .padding(.bottom, 120)
+                        .transition(.scale.combined(with: .opacity))
+                }
             }
             .foregroundColor(.white)
             .opacity(game.phase == .playing ? 1 : 0)
 
             if game.phase != .playing {
                 VStack(spacing: 24) {
-                    Text(game.phase == .over ? "GAME OVER" : "SKY RINGS")
+                    Text(game.phase == .over ? "GAME OVER" : "JET HOP")
                         .font(.system(size: 96, weight: .heavy, design: .rounded)).italic()
                     if game.phase == .over {
-                        Text("Score \(game.score)   ·   Best \(game.best)").font(.title2)
+                        Text("Score \(game.score)   ·   \(game.rings) rings   ·   Best \(game.best)").font(.title2)
                     } else {
-                        Text("Glide your thumb on the remote to steer.\nClick to fire the overdrive.").multilineTextAlignment(.center).font(.title3)
+                        VStack(alignment: .leading, spacing: 10) {
+                            Label("Click to fire a short jet hop over gaps and barriers", systemImage: "flame.fill")
+                            Label("Swipe left or right to change lanes", systemImage: "arrow.left.and.right")
+                            Label("Rings are a bonus: thread them for points", systemImage: "circle.circle")
+                        }
+                        .font(.title3)
                         if game.best > 0 { Text("Best \(game.best)").font(.title3).foregroundColor(.cyan) }
                     }
-                    Text("Click to \(game.phase == .over ? "fly again" : "take off")")
+                    Text("Click to \(game.phase == .over ? "drive again" : "start")")
                         .font(.headline).padding(.horizontal, 30).padding(.vertical, 14)
                         .background(Capsule().fill(Color.cyan.opacity(0.35)))
                 }
@@ -78,5 +90,6 @@ struct HUD: View {
             }
         }
         .animation(.easeOut(duration: 0.25), value: game.phase)
+        .animation(.spring(response: 0.25), value: game.callout)
     }
 }

@@ -45,7 +45,7 @@ targets:
         GCSupportsControllerUserInteraction: true
         GCSupportedGameControllers: [{ ProfileName: ExtendedGamepad }]
         ITSAppUsesNonExemptEncryption: false
-        NSMotionUsageDescription: Tilt your device to bank the flying Roadster.
+        NSMotionUsageDescription: Tilt your device to steer the Roadster.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.roadsterrush.game
@@ -57,15 +57,15 @@ targets:
         SUPPORTS_MACCATALYST: NO
     scheme: {}
 
-  # Apple TV: a native mini-game for the Siri Remote.
-  SkyRings:
+  # Apple TV: a native jet-hop mini-game for the Siri Remote. Shared/ holds the rules it shares with the watch.
+  JetHop:
     type: application
     platform: tvOS
-    sources: [TV]
+    sources: [TV, Shared]
     info:
       path: TV/Info.plist
       properties:
-        CFBundleDisplayName: Sky Rings
+        CFBundleDisplayName: Jet Hop
         UILaunchScreen: {}
         UIUserInterfaceStyle: Dark
         GCSupportsControllerUserInteraction: true
@@ -73,24 +73,24 @@ targets:
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: app.roadsterrush.skyrings
+        PRODUCT_BUNDLE_IDENTIFIER: app.roadsterrush.jethop
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     scheme: {}
 
-  # Apple Watch: a standalone one-thumb mini-game (Digital Crown + tap).
-  RingDash:
+  # Apple Watch: a standalone one-thumb jet-hop mini-game (tap + Digital Crown).
+  HopDash:
     type: application
     platform: watchOS
-    sources: [Watch]
+    sources: [Watch, Shared]
     info:
       path: Watch/Info.plist
       properties:
-        CFBundleDisplayName: Ring Dash
+        CFBundleDisplayName: Hop Dash
         WKApplication: true
         WKWatchOnly: true
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: app.roadsterrush.ringdash
+        PRODUCT_BUNDLE_IDENTIFIER: app.roadsterrush.hopdash
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     scheme: {}

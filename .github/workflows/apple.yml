@@ -38,8 +38,8 @@ jobs:
           - { name: iPhone and iPad, scheme: Roadster, destination: 'generic/platform=iOS Simulator' }
           - { name: Mac, scheme: Roadster, destination: 'platform=macOS' }
           - { name: Apple Vision Pro, scheme: Roadster, destination: 'generic/platform=visionOS Simulator' }
-          - { name: Apple TV, scheme: SkyRings, destination: 'generic/platform=tvOS Simulator' }
-          - { name: Apple Watch, scheme: RingDash, destination: 'generic/platform=watchOS Simulator' }
+          - { name: Apple TV, scheme: JetHop, destination: 'generic/platform=tvOS Simulator' }
+          - { name: Apple Watch, scheme: HopDash, destination: 'generic/platform=watchOS Simulator' }
     steps:
       - uses: actions/checkout@v4
       - name: Install XcodeGen
