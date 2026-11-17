@@ -69,7 +69,8 @@ export class Input {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) {
       if (!p || !p.connected) continue;
-      const ax = p.axes[0] || 0;
+      const dpad = (p.buttons[15]?.pressed ? 1 : 0) - (p.buttons[14]?.pressed ? 1 : 0);
+      const ax = dpad || p.axes[0] || 0;
       const rt = p.buttons[7] ? p.buttons[7].value : 0;
       const lt = p.buttons[6] ? p.buttons[6].value : 0;
       const any = Math.abs(ax) > 0.15 || rt > 0.05 || lt > 0.05 || p.buttons.some((b) => b.pressed);
@@ -147,6 +148,17 @@ export class Input {
     }
     const out = { ...f, pitch: invert ? -f.pitch : f.pitch };
     return out;
+  }
+
+  /** Gamepad rumble (Chrome/Edge/Safari dual-rumble). strength 0..1. Silently does nothing elsewhere. */
+  rumble(ms, strength = 0.5) {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const p of pads) {
+      const a = p && p.connected && p.vibrationActuator;
+      if (!a || !a.playEffect) continue;
+      try { a.playEffect('dual-rumble', { duration: ms, strongMagnitude: strength, weakMagnitude: Math.min(1, strength * 1.4) }).catch(() => {}); } catch (e) { /* unsupported */ }
+      break;
+    }
   }
 
   endFrame() { this.pressed.clear(); }

@@ -32,7 +32,7 @@ const TUTORIAL = [
   { id: 'drive', text: 'Hold W (or GO) to drive. Steer with A / D or ← / →.', key: 'W', touch: 'Hold GO, and drag on the left to steer.', done: (r) => r.player.v.speed > 22 },
   { id: 'jet', text: 'Fire the jets: hold Space to hop. A tap is a short hop, holding flies higher.', key: 'Space', touch: 'Hold JET to hop. A tap is a short hop.', done: (r) => r.tut.hops >= 2 },
   { id: 'ring', text: 'Jet through a glowing ring. Rings are a bonus: jet fuel and a burst of speed.', key: 'Space', touch: 'Hold JET as you reach the ring.', done: (r) => r.tut.rings >= 1 },
-  { id: 'glide', text: 'The tank is small. When it runs dry the wings glide you down. It refills on the road.', key: 'A D', touch: 'Steer while you glide.', done: (r) => r.tut.landings >= 3 },
+  { id: 'glide', text: 'The tank is small. When it runs dry the wings glide you down. Hold S to drop faster. The tank refills on the road.', key: 'S', touch: 'Steer while you glide. Hold BRAKE to drop faster.', done: (r) => r.tut.landings >= 3 },
   { id: 'boost', text: 'Overdrive: hold Shift on the road for a burst of speed.', key: 'Shift', touch: 'Hold ⚡ on the road.', done: (r) => r.tut.boostT > 0.8 },
   { id: 'lap', text: 'Finish the lap. You\'re ready to race!', key: '', touch: '', done: (r) => r.player.finished },
 ];
@@ -250,10 +250,10 @@ export class HopRace extends Race {
     for (const c of this.cars) {
       if (c.out) continue;
       const v = c.v, J = c.jet;
-      let ci = IDLE, jet = false;
+      let ci = IDLE, jet = false, dive = false;
       if (!racing) ci = IDLE;
       else if (c.isPlayer && !c.finished && !this.autopilot) { // autopilot: test hook, AI drives the player
-        ci = inp; jet = !!inp.handbrake;
+        ci = inp; jet = !!inp.handbrake; dive = inp.brake > 0.3;
         if (this.game.profile.settings.assist && Math.abs(inp.steer) < 0.05 && !J.air) v.yawRate *= 0.985;
       } else {
         if (!c.ai) c.ai = new AIDriver(v, tr, { skill: 0.95, lane: 0, seed: 7 });
@@ -265,6 +265,7 @@ export class HopRace extends Race {
         ci = c.ai.update(dt, c.info, others);
         if (c.ai.stuck > 3) { this.resetCar(c); c.ai.stuck = 0; }
         jet = this.aiJet(c);
+        dive = !jet && this.aiDive(c);
       }
       c.prevD = c.info.dist;
       // wheels only drive on the ground; in the air you can still steer a little
@@ -276,7 +277,7 @@ export class HopRace extends Race {
       else env = this.surfaceEnv(c);
       v.step(dt, drive, env);
       tr.locate(v.x, v.z, J.air ? -1 : c.info.i, c.info);
-      this.jetStep(c, racing && jet, dt);
+      this.jetStep(c, racing && jet, dt, racing && J.air && dive);
       if (c.respawned) { c.respawned = false; continue; }
       this.fence(c, dt, racing);
       if (c.respawned) { c.respawned = false; continue; }
@@ -378,14 +379,21 @@ export class HopRace extends Race {
     return true;
   }
 
-  jetStep(c, wantJet, dt) {
+  /**
+   * One physics step of the jets. A hop has three phases that should each feel distinct:
+   *   burn  - the thrusters shove you up hard (~12 m/s² net on Earth) and a little forward;
+   *   apex  - near the top gravity eases off for a moment, so there is a beat to line up a ring;
+   *   fall  - the wings stretch the descent into a glide at speed, unless you hold brake to
+   *           fold them and drop (dive), which is how you get back on the road quickly.
+   */
+  jetStep(c, wantJet, dt, dive = false) {
     const v = c.v, J = c.jet, gr = this.groundUnder(c);
     J.firing = wantJet && J.fuel > 0;
     if (J.firing) {
       J.fuel = Math.max(0, J.fuel - dt / TANK_BURN);
       if (!J.air) {
         J.air = true; J.airT = 0; v.y = gr + 0.05; J.vy = Math.max(J.vy, 2.5);
-        if (c.isPlayer) this.tut.hops++;
+        if (c.isPlayer) { this.tut.hops++; this.vibrate(12); }
         this.groundBlast(c, 0.6);
       }
       J.vy += this.jetUp * dt;
@@ -394,15 +402,19 @@ export class HopRace extends Race {
       if (v.vF < v.stats.vmax * 1.15) { v.vx += fx * 5 * dt; v.vz += fz * 5 * dt; }
     }
     if (J.air) {
-      J.vy -= this.g * dt;
-      // wings: a long, shallow glide when coming down at speed
-      if (!J.firing && J.vy < 0) J.vy *= Math.exp(-dt * 0.6 * clamp(v.speed / 35, 0.2, 1));
+      const apex = !J.firing && !dive && Math.abs(J.vy) < 2.5; // hang time at the top of the arc
+      J.vy -= this.g * (dive ? 1.6 : apex ? 0.6 : 1) * dt;
+      // wings: a long, shallow glide when coming down at speed (folded while diving)
+      if (!J.firing && !dive && J.vy < 0) J.vy *= Math.exp(-dt * 0.6 * clamp(v.speed / 35, 0.2, 1));
+      if (dive) J.vy = Math.max(J.vy, -19); // folded wings still drag: a dive is quick, not a crash
+      J.dive = dive;
       v.y += J.vy * dt; J.airT += dt;
       if (v.y <= gr) {
         const impact = -J.vy;
         v.y = gr; J.vy = 0; J.air = false;
         this.surfaceEnv(c); // what we landed on (sets v.surface, c.offRoad)
         if (impact > 4) this.groundBlast(c, Math.min(1, impact / 20));
+        if (impact > 1.5) this.bump(c, impact);
         if (c.isPlayer) {
           this.tut.landings++;
           this.game.audio.land && this.game.audio.land(impact, v.surface);
@@ -461,6 +473,15 @@ export class HopRace extends Race {
     }
     const pred = v.y + J.vy * t - 0.5 * this.g * t * t;
     return pred < want && J.fuel > 0;
+  }
+
+  /** AI: past the ring and no other in reach? Fold the wings and get the wheels back on the road. */
+  aiDive(c) {
+    const J = c.jet;
+    if (!J.air || J.vy > 0 || c.v.y - c.info.y < 3 || this.gapAt(c.info.dist + c.v.speed * 0.8)) return false;
+    if (!this.rings.length) return true;
+    const L = this.track.length, r = this.rings[this.nextRingIndex(c.info.dist)];
+    return (r.dist - c.info.dist + L) % L > 160;
   }
 
   /** Is the road missing at track distance d (a gap you have to jet over)? */

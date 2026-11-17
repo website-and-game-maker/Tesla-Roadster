@@ -40,6 +40,8 @@ export class Vehicle {
     this.impact = 0;                         // last wall impact speed
     this.gravityScale = 1;
     this.driftTime = 0;
+    this.gripBlend = 1;  // 0 = drift grip, 1 = full grip; eased so a drift ends with a catch, not a snap
+    this.load = 0;       // smoothed longitudinal accel (m/s^2): weight transfer front/back
   }
 
   get speed() { return Math.hypot(this.vx, this.vz); }
@@ -47,6 +49,7 @@ export class Vehicle {
   place(x, y, z, yaw) {
     this.x = x; this.y = y; this.z = z; this.yaw = yaw;
     this.vx = this.vz = this.vy = 0; this.yawRate = 0; this.steer = 0; this.drifting = false;
+    this.gripBlend = 1; this.load = 0;
   }
 
   /**
@@ -83,7 +86,10 @@ export class Vehicle {
 
     const grip = S.grip * gripMul * gscale;
     let desiredYaw = -vF * Math.tan(this.steer) / WHEELBASE;
-    let yawLimit = (grip * 1.15) / Math.max(Math.abs(vF), 4);
+    // Weight transfer: braking loads the front tyres so the nose bites (trail-braking turns in),
+    // hard acceleration unloads them so the car runs a little wide. Small, but you feel it.
+    const transfer = clamp(-this.load / 60, -0.08, 0.16);
+    let yawLimit = (grip * 1.15 * (1 + transfer)) / Math.max(Math.abs(vF), 4);
     if (this.drifting) { yawLimit *= 1.9; desiredYaw *= 1.35; }
     desiredYaw = clamp(desiredYaw, -yawLimit, yawLimit);
     this.yawRate += (desiredYaw - this.yawRate) * Math.min(1, dt * (this.drifting ? 4.5 : 9));
@@ -120,7 +126,12 @@ export class Vehicle {
     if (throttle === 0 && Math.sign(vF) !== Math.sign(oldVF) && brake === 0) vF = 0;
 
     // --- lateral grip ---
-    const latGrip = this.drifting ? grip * 0.42 : grip * 1.5;
+    // Ease between drift grip and full grip: the tyres hook up over ~0.3 s when a drift ends,
+    // and counter-steering (steer pointing the way the car is sliding) catches the slide sooner.
+    const counter = this.drifting && this.steer * vL > 0 ? 1 : 0; // the tail slides out the opposite way to the turn
+    const gripTarget = this.drifting ? 0 : 1;
+    this.gripBlend += clamp(gripTarget - this.gripBlend, -dt * 6, dt * (3.2 + counter * 2));
+    const latGrip = grip * (0.42 + 1.08 * this.gripBlend);
     const dvL = Math.min(Math.abs(vL), latGrip * dt);
     vL -= Math.sign(vL) * dvL;
     this.slip = clamp(Math.abs(vL) / 8, 0, 1);
@@ -129,6 +140,7 @@ export class Vehicle {
     if (this.drifting && spd > 15) this.boost = Math.min(S.boostCap, this.boost + dt * 0.18 * S.regen);
 
     this.accelLong = (vF - oldVF) / dt;
+    this.load += (this.accelLong - this.load) * Math.min(1, dt * 8);
     this.accelLat = vF * this.yawRate;
     this.vF = vF; this.vL = vL;
     this.vx = fx * vF + rx * vL;
