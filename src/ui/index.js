@@ -397,7 +397,12 @@ export function createUI(opts = {}) {
     const b = e.target.closest('[data-lobby]'); if (!b) return;
     const action = b.dataset.lobby; sfx(action === 'leave' ? 'back' : 'click');
     if (action === 'ready') { lobby.ready = !lobby.ready; renderLobby(); emit('lobby', { action, ready: lobby.ready }); }
-    else if (action === 'leave') { emit('lobby', { action }); show('multiplayer'); }
+    else if (action === 'leave') {
+      emit('lobby', { action });
+      // showLobby() stacked main > play > multiplayer; drop the top so Back from here goes to Play, not to this same screen.
+      if (stack[stack.length - 1] === 'multiplayer') stack.pop();
+      show('multiplayer');
+    }
     else emit('lobby', { action, track: lobby.track, car: carPayload() });
   });
 
@@ -1090,7 +1095,7 @@ export function createUI(opts = {}) {
 }
 
 function typeLabel(t) {
-  return ({ race: 'Race', timetrial: 'Time Trial', timeattack: 'Time Attack', elimination: 'Elimination', elim: 'Elimination', drift: 'Drift', sprint: 'Sprint' })[t] || (t ? t[0].toUpperCase() + t.slice(1) : 'Race');
+  return ({ race: 'Race', timetrial: 'Time Trial', timeattack: 'Time Attack', elimination: 'Elimination', elim: 'Elimination', drift: 'Drift', sprint: 'Sprint', ringrace: 'Sky Race', ringtrial: 'Ring Trial' })[t] || (t ? t[0].toUpperCase() + t.slice(1) : 'Race');
 }
 
 function defaultCareer(tracks) {

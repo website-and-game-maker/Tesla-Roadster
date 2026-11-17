@@ -73,7 +73,9 @@ export class Input {
       const rt = p.buttons[7] ? p.buttons[7].value : 0;
       const lt = p.buttons[6] ? p.buttons[6].value : 0;
       const any = Math.abs(ax) > 0.15 || rt > 0.05 || lt > 0.05 || p.buttons.some((b) => b.pressed);
-      if (!any) continue;
+      // A pad at rest still has to forget its buttons, or the next press of the same one
+      // (R reset, C camera, Start) would not count as a new press.
+      if (!any) { this._padPrev = {}; continue; }
       this.lastDevice = 'gamepad';
       const dz = 0.12;
       const sx = Math.abs(ax) < dz ? 0 : (ax - Math.sign(ax) * dz) / (1 - dz);

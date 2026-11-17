@@ -24,7 +24,8 @@ export class Race {
     this.time = 0; this.raceTime = 0;
     this.state = 'intro'; this.stateT = 0;
     this.message = ''; this.note = ''; this.noteT = 0;
-    this.camMode = game.profile.settings.camera || 0;
+    const cm = game.profile.settings.camera;
+    this.camMode = Number.isInteger(cm) && cm >= 0 && cm < 3 ? cm : 0;
     this.shake = 0;
     this.drift = { score: 0, chain: 0, chainT: 0, mult: 1, idle: 0 };
     this.eliminated = [];
@@ -374,7 +375,7 @@ export class Race {
   /** What to press to get back on the road, for the device in use. */
   resetHint() {
     const d = this.game.input.lastDevice;
-    return d === 'touch' ? 'TAP ↺' : d === 'gamepad' ? 'PRESS LB' : 'PRESS R';
+    return d === 'touch' ? 'TAP ↺' : d === 'gamepad' ? 'PRESS BACK' : 'PRESS R';
   }
 
   /** Can the car be auto-reset right now? (Fly mode says no while airborne.) */
@@ -522,7 +523,9 @@ export class Race {
       this.shake = Math.max(0, this.shake - dt * 2.5);
     }
     cam.lookAt(look);
-    const fov = 60 + clamp(sp / 90, 0, 1) * 14 + (v.boosting ? 8 : 0);
+    // Settings > Field of view (default 70°) sets the resting view; speed and boost widen it from there.
+    const baseFov = clamp(+this.game.profile.settings.fov || 70, 55, 95) - 10;
+    const fov = baseFov + clamp(sp / 90, 0, 1) * 14 + (v.boosting ? 8 : 0);
     cam.fov += (fov - cam.fov) * Math.min(1, dt * 3);
     cam.updateProjectionMatrix();
   }
@@ -537,7 +540,8 @@ export class Race {
     let extra = '';
     if (type === 'timeattack') extra = `GOLD ${this.targets[0].toFixed(2)} · SILVER ${this.targets[1].toFixed(2)} · BRONZE ${this.targets[2].toFixed(2)}`;
     if (type === 'drift') extra = `TARGETS ${this.targets.map((t) => t.toLocaleString()).join(' / ')}`;
-    let position = this.cars.length > 1 ? this.position(p) : 0, racers = this.cars.length - this.eliminated.length;
+    // solo runs (tutorial, trials, free roam) have no position: null hides it instead of showing "0th"
+    let position = this.cars.length > 1 ? this.position(p) : null, racers = this.cars.length - this.eliminated.length;
     if (this.online) {
       const o = this.online.hud(this);
       position = o.position; racers = o.racers; others.push(...o.others); extra = o.extra;

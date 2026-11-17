@@ -5,7 +5,7 @@
 // lifts the car up to ~30 m, a quick tap is a short hop. When the tank runs dry the wings
 // glide the car down; the tank refills only while the wheels are on the road.
 // Sky rings hang above the road at spots you need a hop to reach. They refill the jets,
-// in a Ring Trial missing one costs 2 seconds. High enough above the barriers, the car can
+// in a Ring Trial each one threaded takes 1.5 s off the clock (missing one costs nothing). High enough above the barriers, the car can
 // cut corners - but the tank is small, and falling off the course means a reset.
 import * as THREE from 'three';
 import { Coach } from './coach.js';
@@ -39,8 +39,8 @@ const TUTORIAL = [
 
 export class HopRace extends Race {
   /**
-   * cfg.type: 'ringrace' (race rivals; rings refill jets), 'ringtrial' (solo, every ring counts,
-   * misses +2 s), 'tutorial', 'freeflight' (free roam).
+   * cfg.type: 'ringrace' (race rivals; rings refill jets), 'ringtrial' (solo, each ring threaded
+   * takes RING_BONUS s off the clock), 'tutorial', 'freeflight' (free roam).
    */
   constructor(game, cfg) {
     const kind = cfg.type;
@@ -530,7 +530,8 @@ export class HopRace extends Race {
     const text = touch && st.touch ? st.touch : st.text;
     const t = this.game.ui.tutorial;
     if (t && t.show) t.show({ id: st.id, text, keyHint: touch ? '' : st.key, step: this.tut.step + 1, total: TUTORIAL.length });
-    this.tutText = text;
+    // The step card already shows the text; repeat it in the HUD line only when there is no card.
+    this.tutText = t && t.show ? '' : text;
   }
 
   skipTutorial() {
