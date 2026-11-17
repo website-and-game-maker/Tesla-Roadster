@@ -91,7 +91,8 @@ export class Race {
     this.smoke = new Smoke(this.scene, Math.round(300 * q.particles) + 40, this.world.def && this.world.def.scenery === 'desert' ? 0xd8b48a : 0xe6e6e6);
     // what the run-off is made of: drives the dust colour and the tyre sound off the road
     const OFFROAD = { alpine: ['snow', 0xf2f6fa], coast: ['grass', 0x9a8a5e], city: ['dirt', 0x8f8a82], launch: ['dirt', 0xa09684], saltflats: ['sand', 0xe9e2d2],
-      mars: ['sand', 0xc87f55], moon: ['dirt', 0xb9b9b9], canyon: ['sand', 0xc98f5e], isles: ['grass', 0x9fb07a], spires: ['dirt', 0x8a8f99] };
+      mars: ['sand', 0xc87f55], moon: ['dirt', 0xb9b9b9], canyon: ['sand', 0xc98f5e], isles: ['grass', 0x9fb07a], spires: ['dirt', 0x8a8f99],
+      volcano: ['dirt', 0x3a3431], fjord: ['snow', 0xeef3f8], jungle: ['grass', 0x5d7a3a], orbit: ['dirt', 0xa4a9b0] };
     [this.offSurface, this.dustColor] = OFFROAD[this.cfg.worldId] || ['dirt', 0xa89878];
     this.dust = new Particles(this.scene, Math.round(500 * q.particles) + 80); // off-road spray, jet exhaust, landing puffs
     this.offT = 0;

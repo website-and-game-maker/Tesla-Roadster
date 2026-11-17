@@ -27,10 +27,23 @@ import moon from './defs/moon.js';
 import spires from './defs/spires.js';
 import canyon from './defs/canyon.js';
 import isles from './defs/isles.js';
+import volcano from './defs/volcano.js';
+import fjord from './defs/fjord.js';
+import jungle from './defs/jungle.js';
+import orbit from './defs/orbit.js';
 
-// Sky worlds (flight only) slot in between the ground worlds as the career
-// goes on, so every couple of worlds there is a pure flying showcase.
-const DEFS = [coast, saltflats, spires, city, alpine, canyon, launch, mars, isles, moon];
+// Sky worlds (roads in the air, hop races only) slot in between the ground
+// worlds as the career goes on, so every couple of worlds there is a pure
+// jet-hop showcase. Starline Station in orbit is the finale.
+const DEFS = [coast, saltflats, spires, city, alpine, canyon, volcano, launch, fjord, mars, jungle, isles, moon, orbit];
+
+// Stars needed to open the world at position `order`. The main (jet-hop)
+// career offers 9 stars per world (3 events x 3), so this asks for a bit
+// over half of what came before: every world is reachable from the hop
+// career alone, and ground races only speed things up.
+export function unlockStarsFor(order) {
+  return Math.round(order * 5.2);
+}
 
 const DEFAULT_SURFACES = {
   road: { grip: 1, rolling: 0.012 },
@@ -75,15 +88,14 @@ export const WORLDS = DEFS.map((d, order) => {
     name: d.name,
     tagline: d.tagline,
     description: d.description,
-    location: d.location,         // 'Earth' | 'Mars' | 'Moon'
+    location: d.location,         // 'Earth' | 'Mars' | 'Moon' | 'Orbit'
     gravity: d.gravity,
     // Ground race data (null fields for flight-only sky worlds).
     laps: groundOk ? d.laps : flightLaps,
     lengthMeters: Math.round(groundOk ? length : flightLength),
-    // Total stars needed to open this world: each world offers up to 12
-    // (4 career events x 3 stars), and you need ~60% of what came before.
-    unlock: Math.round(order * 7.2),
-    unlockStars: Math.round(order * 7.2),
+    // Total stars needed to open this world (see unlockStarsFor).
+    unlock: unlockStarsFor(order),
+    unlockStars: unlockStarsFor(order),
     // Medal targets in seconds for the full race (laps) and for one lap.
     par: groundOk ? {
       gold: Math.round(total),

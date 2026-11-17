@@ -289,6 +289,100 @@ const BUILD = {
     for (const [x, y, z, r] of [[0.1, 0.36, 0.2, 0.13], [-0.1, 0.36, -0.1, 0.09], [0.3, 0.36, 0.36, 0.07]]) add(g, cyl(r, r, 0.02, 10), mat(0xd99a1c), x, y, z);
     g.userData.spin = 0.7; g.userData.spinAxis = 'y';
   },
+  mallow(g) {
+    add(g, cyl(0.03, 0.03, 2.2, 6), mat(0x8a5a32, { roughness: 0.9 }), 0, -0.3, 0, 0, 0, 0.5);
+    add(g, cyl(0.26, 0.26, 0.4, 16), mat(0xe8b46a, { roughness: 0.8 }), -0.52, 0.66, 0, 0, 0, 0.5);
+    add(g, cyl(0.265, 0.265, 0.12, 16), mat(0x7a4220, { roughness: 0.9 }), -0.6, 0.8, 0, 0, 0, 0.5);
+    g.userData.sway = 0.2;
+  },
+  egg(g) {
+    add(g, sph(0.6, 18, 14), mat(0x15121a, { roughness: 0.08, metalness: 0.6 }), 0, 0, 0, 0, 0, 0, 0.85, 1.15, 0.85);
+    for (let i = 0; i < 5; i++) add(g, box(0.05, 0.5, 0.02), glow(0xff6a1a, 2.2), Math.sin(i * 1.3) * 0.44, -0.1 + i * 0.07, Math.cos(i * 1.3) * 0.44, 0.3, i * 1.3, 0.4);
+    g.userData.spin = 0.6; g.userData.spinAxis = 'y'; g.userData.bob = 0.3;
+  },
+  thermo(g) {
+    add(g, cyl(0.12, 0.12, 1.6, 12), new THREE.MeshStandardMaterial({ color: 0xe8f4ff, transparent: true, opacity: 0.5, roughness: 0.05 }), 0, 0.2, 0, 0, 0, 0.35);
+    add(g, sph(0.22), glow(0xff3a1a, 1.8), 0.27, -0.55, 0);
+    add(g, cyl(0.05, 0.05, 1.4, 8), glow(0xff3a1a, 1.8), -0.02, 0.25, 0, 0, 0, 0.35);
+    add(g, sph(0.14, 10, 8), mat(0xc0c6cc, { metalness: 0.8 }), -0.28, 0.95, 0, 0, 0, 0, 1, 0.5, 1);
+  },
+  mitten(g) {
+    const wool = mat(0xd23b3b, { roughness: 1 });
+    add(g, sph(0.5, 14, 10), wool, 0, 0, 0, 0, 0, 0, 0.9, 1.2, 0.45);
+    add(g, sph(0.2, 10, 8), wool, 0.42, 0.05, 0, 0, 0, -0.6, 0.8, 1.2, 0.8);
+    add(g, cyl(0.42, 0.42, 0.3, 16), mat(0xf2f2f2, { roughness: 1 }), 0, -0.65, 0, 0, 0, 0, 1, 1, 0.5);
+    for (let i = 0; i < 3; i++) add(g, box(0.5, 0.06, 0.05), mat(0xf2f2f2), 0, -0.1 + i * 0.22, 0.22);
+    g.userData.sway = 0.25; g.userData.bob = 0.3;
+  },
+  globe(g) {
+    add(g, sph(0.6, 20, 16), new THREE.MeshStandardMaterial({ color: 0xe8f6ff, transparent: true, opacity: 0.28, roughness: 0.02, metalness: 0.2 }), 0, 0.2, 0);
+    add(g, cyl(0.5, 0.6, 0.35, 20), mat(0x6a3a22, { roughness: 0.6 }), 0, -0.45, 0);
+    add(g, cone(0.22, 0.5, 8), mat(0x2f6a3a), -0.15, 0.05, 0);
+    add(g, box(0.22, 0.2, 0.2), mat(0xb83a2a), 0.18, -0.12, 0);
+    const flakes = new THREE.Group();
+    for (let i = 0; i < 14; i++) add(flakes, sph(0.03, 6, 4), mat(0xffffff), Math.sin(i * 2.1) * 0.35, 0.2 + Math.cos(i * 1.7) * 0.3, Math.sin(i * 3.3) * 0.3);
+    flakes.userData.spin = 1.5; flakes.userData.spinAxis = 'y';
+    g.add(flakes); g.userData.parts = [flakes];
+  },
+  sled(g) {
+    const wood = mat(0xb5793e, { roughness: 0.8 });
+    for (let i = 0; i < 4; i++) add(g, box(0.28, 0.06, 1.6), wood, -0.45 + i * 0.3, 0.2, 0);
+    for (const x of [-0.45, 0.45]) {
+      add(g, box(0.06, 0.06, 1.7), mat(0x9a1f1f, { metalness: 0.5 }), x, -0.15, 0);
+      add(g, tor(0.18, 0.03, 12), mat(0x9a1f1f, { metalness: 0.5 }), x, 0, 0.85, 0, Math.PI / 2, 0, 1, 1, 1);
+      for (const z of [-0.5, 0.5]) add(g, box(0.05, 0.35, 0.05), wood, x, 0.02, z);
+    }
+  },
+  frog(g) {
+    const gld = gold();
+    add(g, sph(0.45, 14, 10), gld, 0, 0, 0, 0, 0, 0, 1.1, 0.7, 1);
+    for (const s of [-1, 1]) {
+      add(g, sph(0.15, 10, 8), gld, s * 0.24, 0.3, 0.25);
+      add(g, sph(0.07, 8, 6), mat(0x111111), s * 0.27, 0.36, 0.36);
+      add(g, sph(0.18, 10, 8), gld, s * 0.42, -0.2, -0.15, 0, 0, 0, 1, 0.5, 1.5);
+    }
+    g.userData.bob = 0.5;
+  },
+  mask(g) {
+    const st = mat(0x9a9a86, { roughness: 1, flatShading: true });
+    add(g, box(1.1, 1.4, 0.3), st, 0, 0, 0);
+    add(g, box(1.3, 0.2, 0.34), mat(0x4c6a34, { roughness: 1 }), 0, 0.75, 0);
+    for (const s of [-1, 1]) add(g, box(0.26, 0.14, 0.1), glow(0x3cff9a, 1.6), s * 0.27, 0.25, 0.17);
+    add(g, box(0.16, 0.36, 0.14), st, 0, -0.02, 0.2);
+    add(g, tor(0.3, 0.05, 16), st, 0, -0.35, 0.16, 0, 0, Math.PI, 1, 0.6, 1);
+    g.userData.spin = 0.4; g.userData.spinAxis = 'y';
+  },
+  radio(g) {
+    const shell = mat(0x6a4a2a, { roughness: 1 });
+    add(g, sph(0.5, 14, 10), shell, 0, 0, 0, 0, 0, 0, 1, 0.85, 1);
+    add(g, cyl(0.51, 0.51, 0.06, 16), mat(0xe8e0cc), 0, 0, 0);
+    add(g, cyl(0.02, 0.02, 1.1, 6), chrome(), 0.2, 0.75, 0);
+    add(g, sph(0.05), glow(0xff3a3a, 2), 0.2, 1.3, 0);
+    for (let i = 0; i < 3; i++) add(g, cyl(0.07, 0.07, 0.05, 10), mat(0x222222), -0.2 + i * 0.2, 0.05, 0.47, Math.PI / 2);
+    g.userData.sway = 0.18;
+  },
+  wrench(g) {
+    const steel = chrome();
+    add(g, box(0.16, 1.5, 0.08), steel, 0, 0, 0);
+    add(g, tor(0.2, 0.08, 16), steel, 0, 0.82, 0);
+    add(g, tor(0.17, 0.07, 16), steel, 0, -0.8, 0);
+    g.userData.spin = 1.2; g.userData.spinAxis = 'z';
+  },
+  sock(g) {
+    const knit = mat(0x4db8ff, { roughness: 1 });
+    add(g, cyl(0.24, 0.24, 1.0, 14), knit, 0, 0.3, 0);
+    add(g, sph(0.24, 12, 8), knit, 0, -0.2, 0.12);
+    add(g, cyl(0.24, 0.24, 0.5, 14), knit, 0, -0.25, 0.35, Math.PI / 2);
+    for (let i = 0; i < 3; i++) add(g, cyl(0.245, 0.245, 0.07, 14), mat(0xffffff), 0, 0.55 + i * 0.12, 0);
+    g.userData.spin = 0.8; g.userData.spinAxis = 'x'; g.userData.bob = 0.4;
+  },
+  basil(g) {
+    add(g, cyl(0.35, 0.28, 0.5, 14), mat(0xdfe3e8, { metalness: 0.4, roughness: 0.3 }), 0, -0.4, 0);
+    add(g, cyl(0.36, 0.36, 0.05, 14), glow(0x4db8ff, 1.4), 0, -0.2, 0);
+    const leaf = mat(0x3fae4a, { roughness: 0.7 });
+    for (let i = 0; i < 9; i++) add(g, sph(0.16, 8, 6), leaf, Math.sin(i * 2.4) * 0.22, -0.05 + (i % 3) * 0.18, Math.cos(i * 2.4) * 0.22, 0, 0, 0, 1, 0.4, 0.7);
+    g.userData.sway = 0.12;
+  },
 };
 
 /** Build the model for a secret. Returns { object, update(t) }. */

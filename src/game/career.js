@@ -69,7 +69,10 @@ export function buildFlightCareer(worlds) {
         skill: Math.min(1.03, 0.74 + tier * 0.02 + (last ? 0.04 : 0)),
         aiUpgrade: Math.min(3, Math.floor(tier / 4)),
         reward: 500 + tier * 150,
-        unlockStars: wi === 0 ? 0 : Math.round(wi * 5.5 * (1 + wi * 0.1)),
+        // Same gate as the world itself, so the hop career alone (9 stars a
+        // world) can open every world. The old curve asked for more stars
+        // than the hop career had from Mars on.
+        unlockStars: w.unlockStars ?? w.unlock ?? Math.round(wi * 5.2),
       });
     });
   });

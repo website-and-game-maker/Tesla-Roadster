@@ -75,10 +75,30 @@ export const SECRETS = {
     S('isles-whale', 'Sky Whale', 'high', 0.5, -1, 'whale', 'glide', 'A toy one. The real ones fly higher.', 'Swimming high above the road at half-way.'),
     S('isles-shard', 'Rainbow Shard', 'low', 0.83, -1, 'shard', 'sparks', 'A piece of this morning, snapped off.', 'Glittering beside the left edge of the road near the end of the lap.'),
   ],
+  volcano: [
+    S('volcano-mallow', 'Toasted Marshmallow', 'low', 0.13, 1, 'mallow', 'sparks', 'Perfectly golden. It took exactly one lap to toast.', 'Held out over the lava just past the right edge of the causeway, early in the lap. A tap of the jets.'),
+    S('volcano-egg', 'Obsidian Egg', 'high', 0.4, -1, 'egg', 'skyhigh', 'Warm to the touch. Best not to wait around for it to hatch.', 'Glowing high above the causeway before half-way. Full burn.'),
+    S('volcano-thermo', 'Melted Thermometer', 'wall', 0.68, -1, 'thermo', 'bullseye', 'It stopped counting at 1,200 degrees and gave up.', "Leaning on top of the left wall in the last third of the lap. Full burn."),
+  ],
+  fjord: [
+    S('fjord-mitten', 'Odd Mitten', 'low', 0.24, -1, 'mitten', 'sparks', 'The other one is somewhere in the next valley, also looking.', 'Drifting just past the left guardrail in the first quarter, along the shore.'),
+    S('fjord-globe', 'Snow Globe', 'high', 0.55, 1, 'globe', 'glide', 'Shake it and the whole fjord gets a fresh coat.', 'Hanging high over the road just after half-way, round the head of the fjord.'),
+    S('fjord-sled', 'Runaway Sled', 'wall', 0.86, 1, 'sled', 'bullseye', 'It left the village without asking and has not looked back.', "Parked in the snow past the right guardrail near the end of the lap. Full burn over the fence, then drive to it."),
+  ],
+  jungle: [
+    S('jungle-frog', 'Golden Frog', 'low', 0.1, -1, 'frog', 'sparks', 'Croaks once per lap, exactly on the beat.', 'Sitting just past the left edge of the bridge soon after the start.'),
+    S('jungle-mask', 'Smiling Stone Mask', 'high', 0.36, 1, 'mask', 'skyhigh', 'It has been smiling at the river for a thousand years. Nobody knows the joke.', 'Floating high over the bridge in the first half. Full burn.'),
+    S('jungle-radio', 'Coconut Radio', 'wall', 0.64, 1, 'radio', 'glide', 'Two halves, one antenna, mostly static and the odd parrot.', "Balanced on top of the right wall in the second half of the lap. Full burn."),
+  ],
   moon: [
     S('moon-golf', 'Hole in One', 'high', 0.2, 1, 'golf', 'skyhigh', 'Still on its way down from a very long drive.', 'High over the road in the first quarter. Low gravity helps.'),
     S('moon-cheese', 'Moon Cheese', 'low', 0.48, 1, 'cheese', 'sparks', 'So the stories were true.', 'Floating by the right edge of the road before half-way.'),
     S('moon-flag', 'Pocket Flag', 'wall', 0.79, -1, 'flag', 'glide', 'One small flag, one giant leap to reach it.', "Planted in the regolith past the left fence, late in the lap."),
+  ],
+  orbit: [
+    S('orbit-wrench', 'Drifting Wrench', 'low', 0.2, 1, 'wrench', 'sparks', 'Dropped on a spacewalk. Still drifting home, very slowly.', 'Turning gently just past the right edge of the ring in the first quarter.'),
+    S('orbit-sock', 'Zero-G Sock', 'high', 0.57, -1, 'sock', 'glide', 'Every station loses one. This is where they all go.', 'Floating high above the ring after half-way. Light gravity: burn and glide.'),
+    S('orbit-basil', 'Station Basil', 'wall', 0.82, -1, 'basil', 'bullseye', 'The only plant on the station. It has seen things.', "Growing on top of the left wall late in the lap. Full burn."),
   ],
 };
 

@@ -87,14 +87,14 @@ The Roadster drives on the road and fires short thruster bursts to hop over traf
   - AI: `aiAimLane` lines the car up under the next ring, `aiJet` times the burn so the arc passes through it.
   - kinds: `ringrace` (vs AI), `ringtrial` (missed ring +2 s), `freeflight`, `tutorial` (drive, jet, ring, glide, boost, lap).
 - Input: the handbrake input is the jet in this mode (Space, touch JET button, gamepad A).
-- Worlds pick their road layout with `createWorld(id, { mode: 'hop' })`; gap worlds (Spires, Red Rock Run, Cloud Isles) are hop-only.
+- Worlds pick their road layout with `createWorld(id, { mode: 'hop' })`; gap worlds (Spires, Red Rock Run, Caldera Crossing, Emerald Falls, Cloud Isles, Starline Station) are hop-only.
 
 ## Secrets (easter eggs): `src/secrets/`
 
 Three hidden objects per world (30 in all), each with a challenge. Wired in with one call,
 `attachSecrets(game)` in `game.js`; the races do not know about it.
 
-- `defs.js`: the 30 secrets (name, hint, flavour text, tier, challenge), rewards, jet trails.
+- `defs.js`: the 42 secrets (name, hint, flavour text, tier, challenge), rewards, jet trails.
   A secret is placed **relative to the track** (`at` 0..1 along the lap, `side`, `tier`), never at
   fixed coordinates, so it stays reachable when scenery or barriers change:
   `low` = just past the road edge, a tap of the jets up; `high` = over the road, a long burn;

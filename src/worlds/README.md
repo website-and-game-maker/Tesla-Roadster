@@ -1,25 +1,31 @@
 # Worlds
 
-Seven original circuits, from a clifftop coast road to the Moon. Everything
-is generated in code from fixed seeds (no downloaded assets), so a world
-loads in well under a second and is identical for every player.
+Fourteen original circuits, from a clifftop coast road to a space station.
+Everything is generated in code from fixed seeds (no downloaded assets), so a
+world loads in well under a second and is identical for every player.
 
 | # | id | World | Modes | Gravity | Unlock (stars) | Feel |
 |---|----|-------|-------|---------|----------------|------|
 | 1 | `coast` | Cypress Coast | flight, ground, hop | 9.81 | 0 | clifftop highway at sunset, lighthouse |
-| 2 | `saltflats` | Salt Flats Speedway | flight, ground, hop | 9.81 | 7 | 2 km straights, top-speed runs, dust storms |
-| 3 | `spires` | Skyline Spires | hop, flight | 9.81 | 14 | skyway between glass towers, under sky bridges |
-| 4 | `city` | Neon Downtown | flight, ground, hop | 9.81 | 22 | night street circuit, 90° corners, wet neon |
-| 5 | `alpine` | Glacier Pass | flight, ground, hop | 9.81 | 29 | hairpins, the flight course dives under a stone arch |
-| 6 | `canyon` | Red Rock Run | hop, flight | 9.81 | 36 | viaduct over a river canyon, natural arches, two pops over the rim |
-| 7 | `launch` | Launch Complex 39 | flight, ground, hop | 9.81 | 43 | loop around a rocket on the pad |
-| 8 | `mars` | Red Planet Rally | flight, ground, hop | 3.71 | 50 | loose regolith, habitat, dust devils |
-| 9 | `isles` | Cloud Isles | hop, flight | 9.81 | 58 | island road with open gaps above a sea of cloud |
-| 10 | `moon` | Tranquility Ring | flight, ground, hop | 1.62 | 65 | black sky, Earth overhead |
+| 2 | `saltflats` | Salt Flats Speedway | flight, ground, hop | 9.81 | 5 | 2 km straights, top-speed runs, dust storms |
+| 3 | `spires` | Skyline Spires | hop, flight | 9.81 | 10 | skyway between glass towers, under sky bridges |
+| 4 | `city` | Neon Downtown | flight, ground, hop | 9.81 | 16 | night street circuit, 90° corners, wet neon |
+| 5 | `alpine` | Glacier Pass | flight, ground, hop | 9.81 | 21 | hairpins, the flight course dives under a stone arch |
+| 6 | `canyon` | Red Rock Run | hop, flight | 9.81 | 26 | viaduct over a river canyon, natural arches |
+| 7 | `volcano` | Caldera Crossing | hop, flight | 9.81 | 31 | basalt causeway over a lava lake, 7 burned-through gaps, erupting cone |
+| 8 | `launch` | Launch Complex 39 | flight, ground, hop | 9.81 | 36 | loop around a rocket on the pad |
+| 9 | `fjord` | Aurora Fjord | flight, ground, hop | 9.81 | 42 | snow road round a fjord at night, aurora, icebergs, low grip, 3 kickers |
+| 10 | `mars` | Red Planet Rally | flight, ground, hop | 3.71 | 47 | loose regolith, habitat, dust devils |
+| 11 | `jungle` | Emerald Falls | hop, flight | 9.81 | 52 | bridge road through a rainforest gorge, waterfalls, temple |
+| 12 | `isles` | Cloud Isles | hop, flight | 9.81 | 57 | island road with open gaps above a sea of cloud |
+| 13 | `moon` | Tranquility Ring | flight, ground, hop | 1.62 | 62 | black sky, Earth overhead |
+| 14 | `orbit` | Starline Station | hop, flight | 5.5 | 68 | truss ring round a space station over a gas giant, 8 long gaps |
 
-Unlocks: each world offers up to 12 stars (4 career events x 3), and a world
-opens at about 60% of the stars available before it (`unlock = round(order * 7.2)`).
-Every world has a road. Spires, canyon and isles offer hop and flight but no plain ground race: filter `WORLDS` by `modes`.
+Unlocks: `unlockStarsFor(order) = round(order * 5.2)`. The jet-hop career
+offers 9 stars per world (3 events x 3), so each world opens at a bit over half
+of the stars before it, and every world is reachable from the hop career alone.
+Ground career stars count too and just speed it up.
+Sky worlds (spires, canyon, volcano, jungle, isles, orbit) offer hop and flight but no plain ground race: filter `WORLDS` by `modes`.
 
 Preview any world, mode, quality tier, time of day and weather at
 `worlds-preview.html?world=mars&mode=flight&quality=high&time=18&weather=dust`.
@@ -79,6 +85,7 @@ The car drives the road and fires short thruster hops. `createWorld(id, { mode: 
 - `world.sun` (DirectionalLight, shadow box follows the car), `world.setShadowSize(px)`, `world.ambient` (HemisphereLight).
 - `world.setTimeOfDay(h)`, `world.setWeather(name)`, `world.timeOfDay`, `world.weather`, `world.night` (true when headlights are needed), `world.nightAmount` (0..1), `world.lightning` (0..1 flash, for thunder).
 - Weathers: `clear`, `cloudy`, `rain`, `storm`, `fog`, `snow`, `dust`. Rain makes the road darker and glossier.
+- `water` in a def: `{ level, color, roughness?, opacity?, emissive?, emissiveIntensity?, flow?, pulse?, lava? }`. `lava: true` swaps the ripples for glowing crust plates (Caldera Crossing).
 
 ### Progression
 - `WORLDS[i]`: `{ id, order, name, tagline, description, location, gravity, laps, lengthMeters, unlock (stars needed), par: { gold, silver, bronze, lapGold }, weathers, defaultWeather, defaultTime, music }`.
