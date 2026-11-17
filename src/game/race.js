@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { Vehicle, carStats, collideCars } from '../physics/vehicle.js';
 import { TrackSampler } from './trackSampler.js';
-import { AIDriver } from './ai.js';
+import { AIDriver, PERSONAS } from './ai.js';
 import { SkidMarks, Smoke, Particles, dustFor } from './effects.js';
 import { Coach } from './coach.js';
 
@@ -54,6 +54,7 @@ export class Race {
     const paints = g.mods.car.PAINTS.map((p) => p.id).filter((id) => id !== P.car.paint);
     const wheels = g.mods.car.WHEELS.map((x) => x.id);
     const names = AI_NAMES.slice().sort(() => Math.random() - 0.5);
+    const personas = PERSONAS.slice().sort(() => Math.random() - 0.5);
     for (let i = 0; i < total; i++) {
       const isPlayer = i === playerSlot;
       const stats = isPlayer ? carStats(P.upgrades) : carStats({ motor: this.cfg.aiUpgrade, inverter: this.cfg.aiUpgrade, tires: this.cfg.aiUpgrade, battery: this.cfg.aiUpgrade }, 0.97 + 0.03 * this.cfg.skill);
@@ -73,7 +74,11 @@ export class Race {
         wrongT: 0, ai: null,
       };
       car.prevDist = car.info.dist;
-      if (!isPlayer) car.ai = new AIDriver(v, this.track, { skill: this.cfg.skill, lane: side * 3.2, seed: i + 1 });
+      if (!isPlayer) {
+        // a field, not clones: each rival gets a persona and a slightly different level
+        const persona = personas[i % personas.length], spread = [0.02, 0.01, 0, -0.005, -0.01, -0.02, -0.03, 0.005][i % 8];
+        car.ai = new AIDriver(v, this.track, { skill: (this.cfg.skill ?? 0.9) + spread, lane: side * 3.2, seed: i + 1 + Math.floor(Math.random() * 1000), persona });
+      }
       this.cars.push(car);
       if (isPlayer) this.player = car;
     }
@@ -136,7 +141,7 @@ export class Race {
   simulateLap(stats) {
     const v = new Vehicle(stats), tr = this.track;
     const p = tr.pointAt(0, 0); v.place(p.x, p.y, p.z, p.yaw);
-    const ai = new AIDriver(v, tr, { skill: 1, lane: 0, seed: 99 });
+    const ai = new AIDriver(v, tr, { skill: 1, lane: 0, seed: 99, persona: 'neutral' });
     const info = {}; tr.locate(v.x, v.z, -1, info);
     let prev = info.dist, crossings = 0, t = 0, lapStart = 0, laps = [];
     const dt = 1 / 60;
@@ -195,10 +200,12 @@ export class Race {
           v.yawRate *= 0.985;
         }
       } else {
-        if (!c.ai) c.ai = new AIDriver(v, tr, { skill: 0.95, lane: 0, seed: 7 }); // player autopilot after finish
+        if (!c.ai) c.ai = new AIDriver(v, tr, { skill: 0.95, lane: 0, seed: 7, persona: 'neutral' }); // player autopilot after finish
         if (c.ai && !c.isPlayer) {
+          // gentle, continuous pack pull (max ±5% at 150 m), and the final-lap flag
           const gap = c.progress - this.player.progress;
-          c.ai.rubber = this.cfg.type === 'race' || this.cfg.type === 'elim' ? (gap > 150 ? 0.94 : gap < -150 ? 1.06 : 1) : 1;
+          c.ai.rubber = this.cfg.type === 'race' || this.cfg.type === 'elim' ? clamp(1 - gap / 3000, 0.95, 1.05) : 1;
+          c.ai.finalLap = c.crossings >= this.cfg.laps;
         }
         ci = c.ai.update(dt, c.info, this.cars.filter((o) => !o.out).map((o) => o.v));
         if (c.ai.stuck > 3) { this.resetCar(c); c.ai.stuck = 0; }
