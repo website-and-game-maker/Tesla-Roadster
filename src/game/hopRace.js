@@ -220,6 +220,7 @@ export class HopRace extends Race {
         const kick = Math.min(RING_KICK, Math.max(0, v.stats.vmax * 1.2 - v.speed));
         v.vx += Math.sin(v.yaw) * kick; v.vz += Math.cos(v.yaw) * kick;
       }
+      if (this.onRing) this.onRing(c, i, hit); // test/telemetry hook
       if (c.isPlayer) this.playerRing(i, hit);
     }
   }
@@ -256,11 +257,8 @@ export class HopRace extends Race {
         ci = inp; jet = !!inp.handbrake;
         if (this.game.profile.settings.assist && Math.abs(inp.steer) < 0.05 && !J.air) v.yawRate *= 0.985;
       } else {
-        if (!c.ai) c.ai = new AIDriver(v, tr, { skill: 0.95, lane: 0, seed: 7 });
-        if (!c.isPlayer) {
-          const gap = c.progress - this.player.progress;
-          c.ai.rubber = this.kind === 'ringrace' ? (gap > 150 ? 0.94 : gap < -150 ? 1.06 : 1) : 1;
-        }
+        if (!c.ai) c.ai = new AIDriver(v, tr, { skill: 0.95, lane: 0, seed: 7, persona: 'neutral' });
+        if (!c.isPlayer && this.kind === 'ringrace') this.aiPack(c);
         c.ai.aimLane = this.aiAimLane(c);
         ci = c.ai.update(dt, c.info, others);
         if (c.ai.stuck > 3) { this.resetCar(c); c.ai.stuck = 0; }
@@ -384,7 +382,10 @@ export class HopRace extends Race {
     if (J.firing) {
       J.fuel = Math.max(0, J.fuel - dt / TANK_BURN);
       if (!J.air) {
-        J.air = true; J.airT = 0; v.y = gr + 0.05; J.vy = Math.max(J.vy, 2.5);
+        // take off relative to the road: on a climb the road rises under you, so the jets
+        // start from its vertical speed (otherwise an uphill take-off lands again every step)
+        const rise = Math.max(0, (c.info.slope || 0) * (v.vF || v.speed || 0));
+        J.air = true; J.airT = 0; v.y = gr + 0.05; J.vy = Math.max(J.vy, 2.5 + rise);
         if (c.isPlayer) this.tut.hops++;
         this.groundBlast(c, 0.6);
       }
@@ -398,7 +399,9 @@ export class HopRace extends Race {
       // wings: a long, shallow glide when coming down at speed
       if (!J.firing && J.vy < 0) J.vy *= Math.exp(-dt * 0.6 * clamp(v.speed / 35, 0.2, 1));
       v.y += J.vy * dt; J.airT += dt;
-      if (v.y <= gr) {
+      // just lifted off with the jets lit: bumpy ground can't snatch the car back down
+      if (J.firing && J.airT < 0.25 && v.y <= gr + 0.05) { v.y = gr + 0.05; J.vy = Math.max(J.vy, 0); }
+      else if (v.y <= gr) {
         const impact = -J.vy;
         v.y = gr; J.vy = 0; J.air = false;
         this.surfaceEnv(c); // what we landed on (sets v.surface, c.offRoad)
@@ -434,33 +437,139 @@ export class HopRace extends Race {
     }
   }
 
-  /** AI: line up under the next ring once it is close (lower skill = looser line). */
+  /** AI: line up under the next ring as it gets close. Each ring gets its own small aiming error. */
   aiAimLane(c) {
     if (!this.rings.length) return null;
-    const L = this.track.length, r = this.rings[this.nextRingIndex(c.info.dist)];
+    const L = this.track.length, ri = this.nextRingIndex(c.info.dist), r = this.rings[ri];
     const ahead = (r.dist - c.info.dist + L) % L;
-    if (ahead > 220) return null;
-    return r.lat + (1 - Math.min(1, c.ai.skill)) * 6 * Math.sin(r.dist + c.v.stats.accel);
+    const A = this.aiAim(c, ri);
+    if (ahead > A.reach || A.skip) return null;
+    // blend from the racing line onto the ring's line over the run-up
+    const w = clamp((A.reach - ahead) / (A.reach * 0.55), 0, 1);
+    const lineLat = c.ai.line ? c.ai.line.lat[Math.floor(((r.dist % L) + L) % L / this.track.ds) % this.track.n] : 0;
+    return lineLat + (r.lat + A.lat - lineLat) * w;
   }
 
-  /** AI: fire the jets so the arc passes through the next ring. */
+  /**
+   * This car's plan for ring ri, made once per ring: whether it goes for it at all, and how
+   * far off its aim is. Better skill and a ring-focused persona: tighter aim, fewer skips.
+   */
+  aiAim(c, ri) {
+    const ai = c.ai;
+    if (ai.ringPlan && ai.ringPlan.i === ri) return ai.ringPlan;
+    const P = ai.persona || { rings: 0.85 }, r = ai.rand || Math.random;
+    const err = clamp((1.03 - ai.skill) * 9 * (1.35 - P.rings), 0, 3.5);
+    const ring = this.rings[ri], roadY = this.track.pointAt(ring.dist, 0, {}).y;
+    const gapRing = this.gapAt(ring.dist), climb = ring.position.y - roadY;
+    // Rings cost time in the air, so only some rivals chase the high ones: ring-focused personas
+    // take them all, racers often stay on the road. Rings over gaps are never optional.
+    const skip = !gapRing && r() < clamp((climb - 6) / 7, 0, 1) * (1 - P.rings) * 2.2;
+    ai.ringPlan = { i: ri, lat: (r() - 0.5) * 2 * err, dy: (r() - 0.5) * 2 * err * 0.6, reach: 130 + 90 * P.rings, skip, climb, gap: gapRing };
+    return ai.ringPlan;
+  }
+
+  /**
+   * AI jets. Three reasons to fire:
+   *  1. a gap in the road ahead (never optional),
+   *  2. the next ring: fire so the arc passes through it,
+   *  3. a hop over traffic it can't get around (bold personas ask for this).
+   */
   aiJet(c) {
+    const L = this.track.length, J = c.jet, v = c.v, ai = c.ai;
+    const sp = Math.max(v.speed, 8), roadY = c.info.y, alt = v.y - roadY;
+    // 1. gaps: be up before the edge and stay up until we're over road again
+    const gapAhead = this.aiGapAhead(c.info.dist, sp * 0.9 + 12);
+    if (gapAhead && J.fuel > 0 && !J.air) return true;
+    if (J.air && J.fuel > 0) {
+      // where would we come down without the jets? Fire only if that's in a gap: landing short
+      // of one is better (refill, then hop it from the road) than burning the tank to stay up.
+      const land = this.aiLanding(c);
+      const over = this.gapAt(c.info.dist + land) || this.gapAt(c.info.dist + land - 4);
+      if (over && (J.vy < 1 || alt < 2)) return true;
+    }
+    // 3. hop over a car that's in the way
+    const L0 = this.rings.length ? (this.rings[this.nextRingIndex(c.info.dist)].dist - c.info.dist + L) % L : Infinity;
+    // optional jets (rings that aren't over a gap, hops) must leave enough to clear the next gap
+    const gapNext = this.aiGapAhead(c.info.dist, 2000);
+    const spare = (cost) => !gapNext || J.fuel - cost + gapNext.off / (sp * TANK_FILL) >= 0.65;
+    if (ai && ai.wantHop > 0 && J.fuel > 0.7 && !gapAhead && L0 > 220 && spare(0.3)) {
+      if (!J.air) return true;
+      if (J.airT < 0.35) return true;
+    }
+    // 2. rings
     if (!this.rings.length) return false;
-    const L = this.track.length, J = c.jet, v = c.v;
-    const r = this.rings[this.nextRingIndex(c.info.dist)];
+    const ri = this.nextRingIndex(c.info.dist), r = this.rings[ri];
     const ahead = (r.dist - c.info.dist + L) % L;
-    if (ahead > 120) return false;
-    const sp = Math.max(v.speed, 8), t = ahead / sp;
-    const want = r.position.y - 0.6; // car origin is at the wheels
+    if (ahead > 140) return false;
+    const plan = ai ? this.aiAim(c, ri) : null;
+    if (plan && plan.skip) return false;
+    const t = ahead / sp;
+    const want = r.position.y - 0.6 + (plan ? plan.dy : 0); // car origin is at the wheels
     const h = want - v.y;
+    const net = this.jetUp - this.g;
     if (!J.air) {
       if (h < 1.5) return false;
-      const net = this.jetUp - this.g;
-      const tNeed = Math.sqrt((2 * h) / net) * 1.35; // burn time that reaches the height, with margin
-      return t <= tNeed && J.fuel > 0.25;
+      // burn time to reach the height, then coast up to it: start when that fits the time left
+      const tBurn = Math.sqrt((2 * h) / (net * (1 + net / this.g)));
+      const tUp = tBurn * (1 + net / this.g);
+      // fastest: leave late and burn all the way up (least time in the air, where drag bleeds
+      // speed). Short on fuel: leave earlier, burn briefly and coast up to it.
+      const tFull = Math.sqrt((2 * h) / net);
+      const late = J.fuel > tFull * 1.1 / TANK_BURN + 0.05;
+      if (!(plan && plan.gap) && !spare((late ? tFull : tBurn) * 1.1 / TANK_BURN)) return false;
+      // a ring over a gap: only climb for it with fuel left to cross; otherwise just hop the gap low
+      if (plan && plan.gap && J.fuel < (late ? tFull : tBurn) * 1.1 / TANK_BURN + 0.35) return false;
+      return t <= (late ? tFull * 1.1 : tUp * 1.1) && J.fuel > Math.min(0.9, tBurn / TANK_BURN + 0.1);
     }
+    // in the air: ballistic prediction to the ring (the glide only slows the fall). A ring still
+    // far off isn't worth holding altitude for: land, refill, and jump for it properly.
+    if (t > 1.6) return false;
+    if (plan && plan.gap ? J.fuel < 0.4 : !spare(0.1)) return false; // the gap rule above keeps us up
     const pred = v.y + J.vy * t - 0.5 * this.g * t * t;
     return pred < want && J.fuel > 0;
+  }
+
+  /** Metres along the track until car c touches down if it doesn't fire (glide included). */
+  aiLanding(c) {
+    const J = c.jet, g = this.g, sp = Math.max(c.v.speed, 1);
+    let y = c.v.y - c.info.y, vy = J.vy, d = 0;
+    const dt = 0.05, damp = Math.exp(-dt * 0.6 * clamp(sp / 35, 0.2, 1));
+    for (let i = 0; i < 200 && y > 0; i++) {
+      vy -= g * dt; if (vy < 0) vy *= damp;
+      y += vy * dt; d += sp * dt;
+    }
+    return d;
+  }
+
+  /** The next gap within `range` metres ahead of track distance d, with its length. */
+  aiGapAhead(d, range) {
+    if (!this.gapList) {
+      // gaps don't move: scan the lap once
+      const L = this.track.length, list = [];
+      let start = null;
+      for (let s = 0; s < L + 4; s += 4) {
+        const g = this.gapAt(s);
+        if (g && start == null) start = s;
+        if (!g && start != null) { list.push({ at: start, len: s - start }); start = null; }
+      }
+      this.gapList = list;
+    }
+    const L = this.track.length;
+    for (const g of this.gapList) {
+      const off = (g.at - d + L) % L;
+      if (off <= range) return { off, len: g.len };
+    }
+    return null;
+  }
+
+  /**
+   * Pack racing: a gentle, continuous pull towards the player so the race stays a race, plus
+   * the final-lap flag (rivals spend their saved Overdrive). Never more than ±5%.
+   */
+  aiPack(c) {
+    const gap = c.progress - this.player.progress;
+    c.ai.rubber = clamp(1 - gap / 3000, 0.95, 1.05);
+    c.ai.finalLap = c.crossings >= this.cfg.laps;
   }
 
   /** Is the road missing at track distance d (a gap you have to jet over)? */
