@@ -113,3 +113,19 @@ Three hidden objects per world (30 in all), each with a challenge. Wired in with
   (`locate/pointAt/curvatureAt/roadHalf/wallHalf`), `groundAt`, `gapAt`, `rings`, `g`, `jetUp`,
   `kind`, `skyWorld`, `respawn()`, `flash()`. UI hooks used: `ui.addScreen`, `ui.startRace`, `ui.screen`.
 - Check: `node tests/secrets/defs.test.js`.
+
+## Graphics and auto quality: `src/core/quality.js`, `src/core/postfx.js`
+
+- `QualityManager` picks Low / Medium / High / Ultra. First guess from the GPU name, cores, memory
+  and device type (`detectTier`). While racing it watches frame rate against the display's real
+  refresh rate (measured in menus, so a 30 Hz battery-saver phone isn't treated as a slow GPU) and,
+  where the browser allows (`EXT_disjoint_timer_query_webgl2`), real GPU time per frame. It lowers
+  render resolution first, then the tier; it only steps up when frames are on time and the GPU is
+  under half busy. What it learns is stored per GPU + screen (`localStorage['roadster-quality-learned']`)
+  so the next visit starts at the right level; a learned cap gets one retry after a week.
+- `PostFX` (Medium and up, WebGL2 with float buffers): HDR scene buffer with MSAA, mip-chain
+  bloom, filmic tone mapping, colour grade, vignette, dithering, and chromatic aberration / radial
+  blur while boosting (High+). Low draws straight to the screen as before. Each race can grade its
+  own look with `race.postLook()`. Custom shaders should end with `#include <colorspace_fragment>`
+  so they look the same with and without post.
+- Check: `node tests/quality/quality.test.js`.
