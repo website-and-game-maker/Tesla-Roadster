@@ -7,10 +7,10 @@ const worldsSrc = readFileSync(new URL('../../src/worlds/index.js', import.meta.
 const worldIds = [...worldsSrc.matchAll(/^import (\w+) from '\.\/defs\/\w+\.js';/gm)].map((m) => m[1]);
 const propsSrc = readFileSync(new URL('../../src/secrets/props.js', import.meta.url), 'utf8');
 
-assert.equal(worldIds.length, 10, 'expected 10 worlds');
+assert.equal(worldIds.length, 14, 'expected 14 worlds');
 for (const id of worldIds) assert.ok(SECRETS[id], `world ${id} has secrets`);
 for (const id of Object.keys(SECRETS)) assert.ok(worldIds.includes(id), `secrets for unknown world ${id}`);
-assert.equal(TOTAL, 30);
+assert.equal(TOTAL, 42);
 
 const ids = new Set(), names = new Set();
 for (const [world, list] of Object.entries(SECRETS)) {
