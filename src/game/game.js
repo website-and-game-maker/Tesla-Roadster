@@ -14,6 +14,7 @@ import { attachMultiplayer } from '../multiplayer/game-bridge.js';
 import { attachAccounts } from './accounts.js';
 import { attachSecrets } from '../secrets/index.js';
 
+const CAMERA_INDEX = { chase: 0, cinematic: 1, hood: 2 };
 const fmt = (t) => { if (t == null) return '--'; const m = Math.floor(t / 60); return `${m}:${(t - m * 60).toFixed(3).padStart(6, '0')}`; };
 const costOf = (list, id) => { const i = list.findIndex((x) => x.id === id); const it = list[i]; return it && it.cost != null ? it.cost : (i < 3 ? 0 : 400 * i); };
 
@@ -61,6 +62,10 @@ export class Game {
     attachAccounts(this).catch((e) => console.error('[game] accounts failed to start', e));
     try { attachSecrets(this); } catch (e) { console.error('[game] secrets failed to start', e); }
     this.applyPreset(this.quality.preset);
+    this.applyManualGraphics();
+    // Let the Settings screen show the tier Auto is actually running, as it adapts.
+    const tellUI = () => { if (this.quality.mode === 'auto' && this.ui.setResolvedQuality) this.ui.setResolvedQuality(this.quality.tierId); };
+    this.quality.onChange(tellUI); tellUI();
     this.inputState = this.input.state;
     this.state = 'menu';
     this.last = performance.now();
@@ -122,6 +127,9 @@ export class Game {
       if (s.musicVol != null) t.music = s.musicVol;
       if (s.sfxVol != null) t.sfx = s.sfxVol;
       if (s.steerSensitivity != null) t.steerSens = s.steerSensitivity;
+      if (s.haptics != null) t.vibration = !!s.haptics;
+      // The team UI names cameras; races count them (C cycles 0 chase, 1 far chase, 2 hood).
+      if (typeof s.camera === 'string') t.camera = CAMERA_INDEX[s.camera] ?? 0;
       this.applySettings(); this.save();
     });
     ui.on('purchase', (p) => this.purchase(p));
@@ -152,11 +160,31 @@ export class Game {
   applySettings() {
     const s = this.profile.settings;
     if (s.quality !== this.quality.mode) this.quality.setMode(s.quality);
+    this.applyManualGraphics();
     this.applyAudioSettings();
     // The team UI's touch controls own tilt steering (and its on-screen switch). Reading
     // the sensor here as well would add the tilt twice and make steering twice as sharp.
     if (this.teamUI) { this.input.enableTilt(false); return; }
     this.input.enableTilt(!!s.tiltSteer).then((ok) => { if (!ok && s.tiltSteer) { s.tiltSteer = false; this.ui.toast('Tilt steering not available'); } });
+  }
+
+  /** A fixed quality (not Auto) lets the team UI's Resolution scale and Shadows controls take over. */
+  manualGraphics() {
+    const s = this.profile.settings;
+    return this.teamUI && s.quality && s.quality !== 'auto';
+  }
+
+  applyManualGraphics() {
+    if (!this.manualGraphics()) return;
+    const s = this.profile.settings, q = this.quality;
+    const rs = Math.max(0.5, Math.min(1, +s.resolutionScale || 1));
+    if (rs !== q.resScale) { q.resScale = rs; q.apply(); }
+    if (this.renderer.shadowMap.enabled !== this.shadowsFor(q.preset)) this.applyPreset(q.preset);
+  }
+
+  shadowsFor(p) {
+    const s = this.profile.settings;
+    return this.manualGraphics() && typeof s.shadows === 'boolean' ? s.shadows : p.shadows;
   }
 
   applyAudioSettings() {
@@ -166,7 +194,7 @@ export class Game {
   }
 
   applyPreset(p) {
-    this.renderer.shadowMap.enabled = p.shadows;
+    this.renderer.shadowMap.enabled = this.shadowsFor(p);
     const scenes = [this.showroom && this.showroom.scene, this.race && this.race.scene].filter(Boolean);
     for (const sc of scenes) sc.traverse((o) => { if (o.material) [].concat(o.material).forEach((m) => { m.needsUpdate = true; }); });
     if (this.race) {
@@ -282,7 +310,7 @@ export class Game {
     const avgUp = Math.round((P.upgrades.motor + P.upgrades.inverter + P.upgrades.tires + P.upgrades.battery) / 4);
     const vm = sel.vehicleMode || (sel.mode === 'tutorial' ? 'flight' : P.settings.vehicleMode) || 'flight';
     const flight = vm === 'flight';
-    const d = typeof sel.difficulty === 'string' ? ({ easy: 0, normal: 1, hard: 2 }[sel.difficulty] ?? 1) : (sel.difficulty ?? 1);
+    const d = typeof sel.difficulty === 'string' ? ({ easy: 0, normal: 1, hard: 2, insane: 3 }[sel.difficulty] ?? 1) : (sel.difficulty ?? 1);
     if (sel.mode === 'career') {
       const ev = this.career.find((e) => e.id === sel.eventId);
       if (!ev) return;
@@ -296,12 +324,12 @@ export class Game {
       cfg = { mode: 'timetrial', flight: true, type: 'ringtrial', worldId: sel.track || this.worlds[0].id, laps: 3, opponents: 0, skill: 1, aiUpgrade: 0 };
     } else if (flight && sel.mode !== 'multiplayer') {
       cfg = { mode: 'quick', flight: true, type: 'ringrace', worldId: sel.track || this.worlds[0].id, laps: sel.laps || 3, opponents: sel.opponents ?? 5,
-        skill: [0.76, 0.86, 0.95][d] || 0.86, aiUpgrade: Math.min(4, Math.max(0, avgUp + d - 1)) };
+        skill: [0.76, 0.86, 0.95, 1.02][d] || 0.86, aiUpgrade: Math.min(4, Math.max(0, avgUp + d - 1)) };
     } else if (sel.mode === 'timetrial') {
       cfg = { mode: 'timetrial', type: 'free', worldId: sel.track, laps: 99, opponents: 0, skill: 1, aiUpgrade: 0 };
     } else {
       cfg = { mode: 'quick', type: 'race', worldId: sel.track || this.worlds[0].id, laps: sel.laps || 3, opponents: sel.opponents ?? 5,
-        skill: [0.82, 0.92, 1.0][d] || 0.92, aiUpgrade: Math.min(4, Math.max(0, avgUp + d - 1)) };
+        skill: [0.82, 0.92, 1.0, 1.04][d] || 0.92, aiUpgrade: Math.min(4, Math.max(0, avgUp + d - 1)) };
     }
     const wd = this.worlds.find((w) => w.id === cfg.worldId);
     if (!wd) cfg.worldId = this.worlds[0].id;
@@ -390,7 +418,7 @@ export class Game {
       if (newly.length) lines.push(['Unlocked', newly.map((w) => w.name).join(', ')]);
     } else {
       credits = res.racers > 1 ? Math.max(0, (res.racers - res.position + 1) * 50 * Math.min(cfg.laps, 5)) : 0;
-      title = cfg.mode === 'quick' ? 'Quick Race' : cfg.mode === 'multiplayer' ? 'Online Race' : 'Time Trial';
+      title = ({ quick: 'Quick Race', multiplayer: 'Online Race', tutorial: 'First Run', freeflight: 'Free Flight' })[cfg.mode] || 'Time Trial';
       headline = res.racers > 1 ? (res.position === 1 ? 'Victory' : `P${res.position}`) : 'Session over';
     }
     if (res.type === 'race' || res.type === 'elim') lines.unshift(['Position', `${res.position} / ${res.racers}`]);

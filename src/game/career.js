@@ -7,8 +7,8 @@ export const EVENT_TYPES = {
   timeattack: { name: 'Time Attack', desc: 'Set a lap time. Beat the gold, silver or bronze target.' },
   drift:      { name: 'Drift Trial', desc: 'Score drift points in 2 laps. Chain drifts for a multiplier.' },
   elim:       { name: 'Elimination', desc: 'Last place is knocked out at the end of every lap.' },
-  ringrace:   { name: 'Sky Race',    desc: 'Race rival flyers through every ring. Missed rings cost 2 seconds.' },
-  ringtrial:  { name: 'Ring Trial',  desc: 'Solo run through the rings against gold, silver and bronze times.' },
+  ringrace:   { name: 'Sky Race',    desc: 'Race rival flyers. Threading a ring refills your jets and gives a burst of speed.' },
+  ringtrial:  { name: 'Ring Trial',  desc: 'Solo run against gold, silver and bronze times. Each ring threaded takes 1.5 seconds off the clock.' },
 };
 
 export const UPGRADE_INFO = {

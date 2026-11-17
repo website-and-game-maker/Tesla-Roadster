@@ -50,15 +50,26 @@ export function loadProfile() {
   return defaultProfile();
 }
 
-let pending = null;
+let pending = null, unsaved = null;
+function writeNow() {
+  clearTimeout(pending); pending = null;
+  if (!unsaved) return;
+  const p = unsaved; unsaved = null;
+  try { localStorage.setItem(KEY, JSON.stringify(p)); } catch (e) { /* ignore */ }
+}
 export function saveProfile(p) {
+  unsaved = p;
   clearTimeout(pending);
-  pending = setTimeout(() => {
-    try { localStorage.setItem(KEY, JSON.stringify(p)); } catch (e) { /* ignore */ }
-  }, 150);
+  pending = setTimeout(writeNow, 150);
+}
+// Closing or backgrounding the tab right after a race (or a purchase) must not lose it.
+if (typeof addEventListener === 'function') {
+  addEventListener('pagehide', writeNow);
+  addEventListener('visibilitychange', () => { if (typeof document !== 'undefined' && document.hidden) writeNow(); });
 }
 
 export function resetProfile() {
+  clearTimeout(pending); pending = null; unsaved = null;
   try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
   return defaultProfile();
 }

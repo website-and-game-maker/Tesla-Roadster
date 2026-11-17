@@ -642,3 +642,16 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 4px 7px; border-radius:
 .ui-touch .teach { border-color: #35e8ff !important; animation: t-teach 1s ease-in-out infinite; }
 @keyframes t-teach { 0%, 100% { box-shadow: 0 0 0 0 rgba(53,232,255,.75), 0 0 18px rgba(53,232,255,.5); } 50% { box-shadow: 0 0 0 12px rgba(53,232,255,0), 0 0 30px rgba(53,232,255,.9); } }
 @media (prefers-reduced-motion: reduce) { .ui-touch .teach { animation: none; box-shadow: 0 0 0 4px rgba(53,232,255,.8); } }
+
+/* Screens opened from the pause menu (Settings, Controls) sit over the live race: darken it and
+   hide the HUD so its numbers don't show through the top bar. Coach/tutorial cards hide behind
+   every overlay (pause, confirm, settings) instead of covering the dialog. */
+.ui-root.in-race .ui-screen:not(.ui-modal):not(.s-results) { background: rgba(4,5,8,.86); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.ui-root.in-race:is([data-screen=settings], [data-screen=howto]) .ui-hud { visibility: hidden; }
+.ui-root.in-race:not([data-screen=""]) .ui-tut { visibility: hidden; }
+/* On phones the tutorial step card uses the coach's compact size and spot, so it stays clear of
+   the tilt pill, altimeter and steering strip. */
+.ui-root.is-touch .ui-tut { top: calc(66px + var(--safe-t)); }
+.ui-root.is-touch .ui-tut .tut-card { max-width: min(440px, 52vw); padding: 9px 14px 7px; }
+.ui-root.is-touch .ui-tut .tut-text { font-size: 14px; margin: 2px 0 2px; }
+.ui-root.is-touch .ui-tut .tut-skip { margin-top: 2px; padding: 4px 8px; }
