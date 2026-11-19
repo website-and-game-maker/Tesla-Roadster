@@ -654,11 +654,18 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 4px 7px; border-radius:
 .ui-root.is-touch:has(.ui-hud.flight) .h-tut { top: calc(112px + var(--safe-t)); }
 /* The bars sit inside the dial's open bottom, clear of the arc's left end (it was eating the J of JETS). */
 .h-bars { width: 124px; bottom: 2px; gap: 4px; }
-.h-bar label { width: 46px; }
+.h-bar label { width: 46px; flex: none; letter-spacing: .12em; }
 /* Phone: the dial is too small to hold the bars clear of its arc, so they sit just to its right,
    in the gap before the pedals. */
-.ui-root.is-touch .h-bars { left: 100%; transform: none; bottom: calc(10px + var(--safe-b)); width: 118px; margin-left: 6px; padding: 6px 8px; border-radius: 10px; background: rgba(10,12,16,.45); }
-.ui-root.is-touch .h-bar label { width: 44px; }
+.ui-root.is-touch .h-bars { left: 100%; transform: none; bottom: calc(10px + var(--safe-b)); width: 124px; margin-left: 6px; padding: 6px 8px; border-radius: 10px; background: rgba(10,12,16,.45); }
+.ui-root.is-touch .h-bar label { width: 48px; flex: none; letter-spacing: .12em; }
+/* Small landscape phones (iPhone SE size) have no gap between the dial and BRAKE, so the bars go back
+   inside the dial's open bottom, on a darker backing so the arc behind them can't eat the labels. */
+@media (max-width: 760px) {
+  /* ...and ALT moves to the left of NEXT RING, since on the right it runs into BEST. */
+  .ui-root.is-touch .h-alt { left: auto; right: calc(50% + 84px); }
+  .ui-root.is-touch .h-bars { left: 50%; transform: translateX(-50%); margin-left: 0; bottom: calc(2px + var(--safe-b)); background: rgba(10,12,16,.7); }
+}
 /* Narrow portrait phones have no room beside NEXT RING: ALT goes back under it, and cards go below both. */
 @media (max-width: 600px) {
   .ui-root.is-touch .h-alt { left: 50%; transform: translateX(-50%); top: calc(112px + var(--safe-t)); }
