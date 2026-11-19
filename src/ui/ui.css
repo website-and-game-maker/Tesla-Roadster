@@ -664,6 +664,11 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 4px 7px; border-radius:
 @media (max-width: 760px) {
   /* ...and ALT moves to the left of NEXT RING, since on the right it runs into BEST. */
   .ui-root.is-touch .h-alt { left: auto; right: calc(50% + 84px); }
+  /* ...and tip/tutorial cards fit the band between the minimap and the JET/boost/pedal column,
+     so they never cover the boost button. */
+  .ui-root.is-touch .ui-tut { left: calc(120px + var(--safe-l)); right: calc(224px + var(--safe-r)); display: flex; justify-content: center; transform: translate(0, -12px); }
+  .ui-root.is-touch .ui-tut.show { transform: translate(0, 0); }
+  .ui-root.is-touch .ui-tut .tut-card { min-width: 0; max-width: 100%; }
   .ui-root.is-touch .h-bars { left: 50%; transform: translateX(-50%); margin-left: 0; bottom: calc(2px + var(--safe-b)); background: rgba(10,12,16,.7); }
 }
 /* Narrow portrait phones have no room beside NEXT RING: ALT goes back under it, and cards go below both. */
